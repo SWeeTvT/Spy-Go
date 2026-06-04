@@ -489,12 +489,13 @@ h2 {
   border-radius: 16px;
   background: #f6f5f1;
   border: 1px solid var(--border);
+  max-height: calc(90vh - 90px);
 }
 
 #rulesImage {
   display: block;
   width: 100%;
-  min-width: 720px;
+  max-width: 100%;
   height: auto;
 }
 
@@ -532,7 +533,32 @@ h2 {
     grid-template-columns: 1fr;
   }
 
+  .modal {
+    padding: 10px;
+    align-items: start;
+    padding-top: max(10px, env(safe-area-inset-top));
+  }
+
+  .modal-card {
+    width: 100%;
+    max-height: calc(100vh - 20px);
+    border-radius: 18px;
+    padding: 12px;
+  }
+
+  .rules-modal {
+    width: 100%;
+  }
+
+  .rules-image-wrap {
+    max-height: calc(100vh - 96px);
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
   #rulesImage {
-    min-width: 680px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
 }
