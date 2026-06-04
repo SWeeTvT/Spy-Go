@@ -3,6 +3,7 @@ const socket = io();
 let roomState = null;
 let playerState = null;
 let joinedRoomId = null;
+let notesLoaded = false;
 
 const connectionStatus = document.querySelector("#connectionStatus");
 const joinPanel = document.querySelector("#joinPanel");
@@ -32,9 +33,12 @@ const logBox = document.querySelector("#logBox");
 const startButton = document.querySelector("#startButton");
 const resetButton = document.querySelector("#resetButton");
 const aboutButton = document.querySelector("#aboutButton");
+const notesButton = document.querySelector("#notesButton");
 const rulesButton = document.querySelector("#rulesButton");
 const aboutModal = document.querySelector("#aboutModal");
+const notesModal = document.querySelector("#notesModal");
 const rulesModal = document.querySelector("#rulesModal");
+const notesContent = document.querySelector("#notesContent");
 const toast = document.querySelector("#toast");
 
 const playerTemplate = document.querySelector("#playerTemplate");
@@ -160,6 +164,10 @@ function initRoomFromUrl() {
 function initModalActions() {
   aboutButton?.addEventListener("click", () => openModal(aboutModal));
   rulesButton?.addEventListener("click", () => openModal(rulesModal));
+  notesButton?.addEventListener("click", () => {
+    openModal(notesModal);
+    loadNotesContent();
+  });
 
   document.querySelectorAll("[data-close-modal]").forEach((node) => {
     node.addEventListener("click", () => closeAllModals());
@@ -172,6 +180,20 @@ function initModalActions() {
   });
 }
 
+async function loadNotesContent() {
+  if (notesLoaded || !notesContent) return;
+
+  try {
+    const response = await fetch("/notes.txt", { cache: "no-store" });
+    if (!response.ok) throw new Error("notes fetch failed");
+    const text = await response.text();
+    notesContent.textContent = text.trim() || "暂无使用说明。";
+    notesLoaded = true;
+  } catch {
+    notesContent.textContent = "使用说明加载失败，请稍后重试。";
+  }
+}
+
 function openModal(modal) {
   if (!modal) return;
   modal.classList.remove("hidden");
@@ -180,7 +202,7 @@ function openModal(modal) {
 }
 
 function closeAllModals() {
-  [aboutModal, rulesModal].forEach((modal) => {
+  [aboutModal, notesModal, rulesModal].forEach((modal) => {
     if (!modal) return;
     modal.classList.add("hidden");
     modal.setAttribute("aria-hidden", "true");
