@@ -15,6 +15,7 @@
         <p class="subtitle">点开即用的 6 人内鬼模式身份与指认工具。</p>
         <div class="utility-actions">
           <button id="rulesButton" class="text-button" type="button">查看详细规则</button>
+          <button id="notesButton" class="text-button" type="button">使用说明</button>
           <button id="aboutButton" class="text-button subtle" type="button">作者信息</button>
         </div>
       </div>
@@ -155,6 +156,17 @@
         <p>B站：纱雾雾雾雾</p>
         <p>欢迎留言交流讨论</p>
       </div>
+    </section>
+  </div>
+
+  <div class="modal hidden" id="notesModal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal></div>
+    <section class="modal-card small-modal" role="dialog" aria-modal="true" aria-labelledby="notesTitle">
+      <div class="modal-head">
+        <h2 id="notesTitle">使用说明</h2>
+        <button class="icon-button" type="button" data-close-modal>×</button>
+      </div>
+      <pre id="notesContent" class="notes-content">正在加载使用说明...</pre>
     </section>
   </div>
 
