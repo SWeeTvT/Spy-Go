@@ -43,6 +43,11 @@ function sanitizeName(name) {
   return value.slice(0, 16) || "匿名玩家";
 }
 
+function sanitizeRank(rank) {
+  const value = String(rank || "").trim();
+  return value.slice(0, 16) || "未填写段位";
+}
+
 function getRoom(roomId) {
   if (!rooms.has(roomId)) {
     rooms.set(roomId, createRoom(roomId));
@@ -94,6 +99,7 @@ function publicRoomState(room) {
     players: room.players.map((player) => ({
       id: player.id,
       name: player.name,
+      rank: player.rank,
       team: player.team,
       eliminated: Boolean(player.eliminated),
       connected: player.connected
@@ -121,6 +127,7 @@ function privatePlayerState(room, socketId) {
   return {
     id: player.id,
     name: player.name,
+    rank: player.rank,
     team: player.team,
     role: player.role,
     eliminated: Boolean(player.eliminated),
@@ -305,6 +312,7 @@ function buildPlayerResult(player, outcome, reason) {
   return {
     id: player.id,
     name: player.name,
+    rank: player.rank,
     team: player.team,
     role: player.role,
     eliminated: Boolean(player.eliminated),
@@ -424,7 +432,7 @@ function removePlayer(socket) {
 }
 
 io.on("connection", (socket) => {
-  socket.on("room:join", ({ roomId, name }) => {
+  socket.on("room:join", ({ roomId, name, rank }) => {
     const safeRoomId = String(roomId || "").trim().slice(0, 24);
 
     if (!safeRoomId) {
@@ -449,6 +457,7 @@ io.on("connection", (socket) => {
     const player = {
       id: socket.id,
       name: sanitizeName(name),
+      rank: sanitizeRank(rank),
       team: null,
       role: null,
       eliminated: false,
