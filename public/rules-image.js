@@ -1,0 +1,1 @@
+window.SPY_GO_RULES_IMAGE = "data:image/webp;base64,UklGRhATAgBXRUJQVlA4IAQTAgDQFAedASoeBNQFPpFAmkqlo6";
