@@ -1,0 +1,14 @@
+{
+  "name": "spy-go",
+  "version": "1.0.0",
+  "description": "Minimal multiplayer Spy Go role and accusation web app",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.3",
+    "socket.io": "^4.7.5"
+  }
+}
