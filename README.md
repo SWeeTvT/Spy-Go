@@ -1,7 +1,9 @@
-# Spy-Go
+# 趣味围棋——多人联棋内鬼模式（Spy-Go）
+Spy Go 是一款多人联棋内鬼模式的趣味围棋玩法工具。玩家通过网页进入同一房间，选择棋手座位后，由系统分配忠臣与内鬼身份，并支持指认节点、全盲指认、内鬼出局、终局 AI 胜率判定与逐人胜负结算。
+
 A multiplayer web tool for Spy Go, a fun Go variant with team play, hidden spies, blind accusations, and automated result judging.
 
-### Try it online: https://spy-go.onrender.com/
+## Try it online: https://spy-go.onrender.com
 
 ### 使用说明
 1、本工具仅用于多人在线同时自动分配身份、系统判决指认结果，无法提供在线对弈以及围棋AI功能。请玩家自行通过其他对弈平台进行对局。
