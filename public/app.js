@@ -212,11 +212,12 @@ function renderCurrentPlayer() {
 
   const teamText = playerState.team ? TEAM_LABEL[playerState.team] : "未分队";
   const roleText = playerState.role ? ROLE_LABEL[playerState.role] : "未发放";
+  const eliminatedText = playerState.eliminated ? " · 已出局" : "";
 
   playerInfo.innerHTML = `
     <div class="identity">
       你是：${escapeHtml(playerState.name)}
-      <strong>${teamText} · ${roleText}</strong>
+      <strong>${teamText} · ${roleText}${eliminatedText}</strong>
     </div>
     <p class="hint">${playerState.isHost ? "你是房主。满 6 人后可以开始游戏。" : "等待房主操作。"}</p>
   `;
@@ -232,8 +233,9 @@ function renderPlayers() {
     node.querySelector(".host-mark").textContent =
       player.id === roomState.hostId ? "房主" : "";
 
+    const teamText = player.team ? TEAM_LABEL[player.team] : "等待分队";
     node.querySelector(".player-team").textContent =
-      player.team ? TEAM_LABEL[player.team] : "等待分队";
+      player.eliminated ? `${teamText} · 已出局` : teamText;
 
     playersList.appendChild(node);
   }
@@ -283,6 +285,40 @@ function renderWaitingStage() {
 function renderAccusingStage() {
   const currentHand = roomState.currentHand;
   const alreadySubmitted = Boolean(roomState.accusations[playerState.id]);
+  const teamSpyFound = playerState.team === "black"
+    ? roomState.teamStatus?.blackSpyFound
+    : roomState.teamStatus?.whiteSpyFound;
+
+  if (roomState.teamStatus?.allSpiesFound) {
+    stageBox.innerHTML = `
+      <div class="notice">
+        内鬼已全部找出，请正常行棋至 150 手比拼终局 AI 胜率。
+      </div>
+    `;
+    return;
+  }
+
+  if (playerState.eliminated) {
+    stageBox.innerHTML = `
+      <div class="notice">
+        第 <strong>${currentHand}</strong> 手指认节点。
+        <br />
+        你已出局，本轮指认无需操作。
+      </div>
+    `;
+    return;
+  }
+
+  if (teamSpyFound) {
+    stageBox.innerHTML = `
+      <div class="notice">
+        第 <strong>${currentHand}</strong> 手指认节点。
+        <br />
+        ${TEAM_LABEL[playerState.team]}内鬼已找出，本轮指认无需操作。
+      </div>
+    `;
+    return;
+  }
 
   if (alreadySubmitted) {
     stageBox.innerHTML = `
@@ -300,9 +336,9 @@ function renderAccusingStage() {
       <div class="notice">
         第 <strong>${currentHand}</strong> 手指认节点。
         <br />
-        你是内鬼，本环节可以选择放弃指认。
+        你是内鬼，本环节无需指认，请选择不指认。
       </div>
-      <button id="abstainButton">放弃指认</button>
+      <button id="abstainButton">不指认</button>
     `;
 
     document.querySelector("#abstainButton").addEventListener("click", () => {
@@ -316,7 +352,7 @@ function renderAccusingStage() {
   }
 
   const teammates = roomState.players.filter((player) => {
-    return player.team === playerState.team && player.id !== playerState.id;
+    return player.team === playerState.team && player.id !== playerState.id && !player.eliminated;
   });
 
   const options = teammates.map((player) => {
@@ -334,21 +370,24 @@ function renderAccusingStage() {
     <div class="notice">
       第 <strong>${currentHand}</strong> 手指认节点。
       <br />
-      你是忠臣，请在本队另外两名玩家中选择你认为的内鬼。
+      你是忠臣，可以选择指认本队玩家，也可以选择不指认。
     </div>
 
     <div class="choice-grid">
       ${options}
     </div>
 
-    <button id="submitAccusationButton">提交指认</button>
+    <div class="choice-grid">
+      <button id="submitAccusationButton">提交指认</button>
+      <button id="abstainButton" class="secondary">不指认</button>
+    </div>
   `;
 
   document.querySelector("#submitAccusationButton").addEventListener("click", () => {
     const selected = document.querySelector('input[name="target"]:checked');
 
     if (!selected) {
-      showToast("请选择一名本队玩家");
+      showToast("请选择一名本队玩家，或选择不指认");
       return;
     }
 
@@ -358,13 +397,22 @@ function renderAccusingStage() {
       abstain: false
     });
   });
+
+  document.querySelector("#abstainButton").addEventListener("click", () => {
+    socket.emit("accusation:submit", {
+      roomId: joinedRoomId,
+      abstain: true
+    });
+  });
 }
 
 function renderFinalAiStage() {
+  const finalReason = roomState.finalAiReason || "第 150 手结束，无人成功指认。";
+
   if (!playerState.isHost) {
     stageBox.innerHTML = `
       <div class="notice">
-        第 150 手结束，无人成功指认。
+        ${escapeHtml(finalReason)}
         <br />
         等待房主提交 AI 胜率更高的一方。
       </div>
@@ -374,7 +422,7 @@ function renderFinalAiStage() {
 
   stageBox.innerHTML = `
     <div class="notice">
-      第 150 手结束，无人成功指认。
+      ${escapeHtml(finalReason)}
       <br />
       请房主根据实际棋局选择 AI 胜率更高的一方。
     </div>
@@ -411,7 +459,11 @@ function renderEndedStage() {
   if (result.type === "accusation") {
     const items = result.result.map((item) => {
       const team = TEAM_LABEL[item.team];
-      const winner = item.winner === "loyalists" ? "忠臣胜" : "内鬼胜";
+      const winner = item.winner === "spy"
+        ? "内鬼胜"
+        : item.winner === "team"
+          ? "全队胜"
+          : "忠臣胜";
 
       return `
         <div class="result-item">
