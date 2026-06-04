@@ -4,7 +4,6 @@ let roomState = null;
 let playerState = null;
 let joinedRoomId = null;
 let notesLoaded = false;
-let autoJoinAttempted = false;
 
 const connectionStatus = document.querySelector("#connectionStatus");
 const joinPanel = document.querySelector("#joinPanel");
@@ -63,15 +62,12 @@ const PHASE_LABEL = {
 
 const SEAT_ORDER = ["black1", "black2", "black3", "white1", "white2", "white3"];
 
-const playerToken = getOrCreatePlayerToken();
-
 initRoomFromUrl();
 restorePlayerForm();
 initModalActions();
 
 socket.on("connect", () => {
   connectionStatus.textContent = "已连接";
-  tryAutoJoin();
 });
 
 socket.on("disconnect", () => {
@@ -99,7 +95,7 @@ socket.on("player:update", (state) => {
 });
 
 joinButton.addEventListener("click", () => {
-  submitJoin(false);
+  submitJoin();
 });
 
 copyInviteButton.addEventListener("click", copyInviteLink);
@@ -120,73 +116,44 @@ resetButton.addEventListener("click", () => {
   });
 });
 
-function submitJoin(isAutoRestore) {
+function submitJoin() {
   const name = nameInput.value.trim();
   const rank = rankInput.value.trim();
   const seat = seatInput.value.trim();
 
   if (!name) {
-    if (!isAutoRestore) {
-      showToast("请输入昵称");
-      nameInput.focus();
-    }
+    showToast("请输入昵称");
+    nameInput.focus();
     return false;
   }
 
   if (!rank) {
-    if (!isAutoRestore) {
-      showToast("请输入真实段位");
-      rankInput.focus();
-    }
+    showToast("请输入真实段位");
+    rankInput.focus();
     return false;
   }
 
   if (!seat) {
-    if (!isAutoRestore) {
-      showToast("请选择棋手座位");
-      seatInput.focus();
-    }
+    showToast("请选择棋手座位");
+    seatInput.focus();
     return false;
   }
 
   localStorage.setItem("spy-go-name", name);
   localStorage.setItem("spy-go-rank", rank);
   localStorage.setItem("spy-go-seat", seat);
-  localStorage.setItem("spy-go-last-room", joinedRoomId);
 
   socket.emit("room:join", {
     roomId: joinedRoomId,
     name,
     rank,
-    seat,
-    playerToken
+    seat
   });
 
   joinPanel.classList.add("hidden");
   gamePanel.classList.remove("hidden");
 
-  if (isAutoRestore) {
-    showToast("正在尝试恢复房间连接...");
-  }
-
   return true;
-}
-
-function tryAutoJoin() {
-  if (autoJoinAttempted || playerState) return;
-
-  const savedName = localStorage.getItem("spy-go-name");
-  const savedRank = localStorage.getItem("spy-go-rank");
-  const savedSeat = localStorage.getItem("spy-go-seat");
-  const lastRoom = localStorage.getItem("spy-go-last-room");
-
-  if (!savedName || !savedRank || !savedSeat) return;
-
-  const shouldRestore = lastRoom === joinedRoomId || Boolean(new URLSearchParams(window.location.search).get("room"));
-  if (!shouldRestore) return;
-
-  autoJoinAttempted = true;
-  submitJoin(true);
 }
 
 function initRoomFromUrl() {
@@ -273,30 +240,6 @@ function restorePlayerForm() {
   }
 }
 
-function getOrCreatePlayerToken() {
-  const existing = localStorage.getItem("spy-go-player-token");
-  if (existing && /^[a-zA-Z0-9_-]{16,80}$/.test(existing)) {
-    return existing;
-  }
-
-  const token = createPlayerToken();
-  localStorage.setItem("spy-go-player-token", token);
-  return token;
-}
-
-function createPlayerToken() {
-  if (window.crypto?.randomUUID) {
-    return window.crypto.randomUUID().replaceAll("-", "");
-  }
-
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let value = "";
-  for (let i = 0; i < 32; i++) {
-    value += alphabet[Math.floor(Math.random() * alphabet.length)];
-  }
-  return value;
-}
-
 function createRoomId() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let value = "";
@@ -380,7 +323,7 @@ function renderCurrentPlayer() {
       <strong>${teamText} · ${roleText}${eliminatedText}</strong>
     </div>
     <p class="hint">${playerState.isHost ? "你是房主。满 6 人且座位无误后可以开始游戏。" : "等待房主操作。"}</p>
-    <p class="hint">刷新或短暂断线后，使用同一浏览器打开本房间链接可自动恢复身份。</p>
+    <p class="hint">刷新、掉线或退出后，重新输入相同昵称即可恢复身份。</p>
   `;
 }
 
