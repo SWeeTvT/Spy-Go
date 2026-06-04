@@ -29,6 +29,11 @@ const logBox = document.querySelector("#logBox");
 
 const startButton = document.querySelector("#startButton");
 const resetButton = document.querySelector("#resetButton");
+const aboutButton = document.querySelector("#aboutButton");
+const rulesButton = document.querySelector("#rulesButton");
+const aboutModal = document.querySelector("#aboutModal");
+const rulesModal = document.querySelector("#rulesModal");
+const rulesImage = document.querySelector("#rulesImage");
 const toast = document.querySelector("#toast");
 
 const playerTemplate = document.querySelector("#playerTemplate");
@@ -52,6 +57,7 @@ const PHASE_LABEL = {
 
 initRoomFromUrl();
 restoreName();
+initModalActions();
 
 socket.on("connect", () => {
   connectionStatus.textContent = "已连接";
@@ -128,6 +134,41 @@ function initRoomFromUrl() {
   inviteBox.classList.remove("hidden");
 
   joinTitle.textContent = roomFromUrl ? "加入房间" : "创建房间";
+}
+
+function initModalActions() {
+  if (rulesImage && window.SPY_GO_RULES_IMAGE) {
+    rulesImage.src = window.SPY_GO_RULES_IMAGE;
+  }
+
+  aboutButton?.addEventListener("click", () => openModal(aboutModal));
+  rulesButton?.addEventListener("click", () => openModal(rulesModal));
+
+  document.querySelectorAll("[data-close-modal]").forEach((node) => {
+    node.addEventListener("click", () => closeAllModals());
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeAllModals();
+    }
+  });
+}
+
+function openModal(modal) {
+  if (!modal) return;
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+}
+
+function closeAllModals() {
+  [aboutModal, rulesModal].forEach((modal) => {
+    if (!modal) return;
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+  });
+  document.body.classList.remove("modal-open");
 }
 
 function restoreName() {
