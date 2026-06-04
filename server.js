@@ -30,7 +30,11 @@ function createRoom(roomId) {
     accusations: {},
     gameLog: [],
     finalResult: null,
-    finalAiReason: null
+    finalAiReason: null,
+    finalWinRateBonus: {
+      black: 0,
+      white: 0
+    }
   };
 }
 
@@ -53,6 +57,18 @@ function shuffle(array) {
     [copied[i], copied[j]] = [copied[j], copied[i]];
   }
   return copied;
+}
+
+function teamName(team) {
+  return team === "black" ? "黑方" : "白方";
+}
+
+function otherTeam(team) {
+  return team === "black" ? "white" : "black";
+}
+
+function pushLog(room, text, type = "normal") {
+  room.gameLog.push({ text, type });
 }
 
 function getSpyInTeam(room, team) {
@@ -93,7 +109,8 @@ function publicRoomState(room) {
     accusations: room.accusations,
     gameLog: room.gameLog,
     finalResult: room.finalResult,
-    finalAiReason: room.finalAiReason
+    finalAiReason: room.finalAiReason,
+    finalWinRateBonus: room.finalWinRateBonus
   };
 }
 
@@ -149,10 +166,13 @@ function assignRoles(room) {
   room.accusations = {};
   room.finalResult = null;
   room.finalAiReason = null;
-  room.gameLog = [
-    `游戏开始：黑方 3 人，白方 3 人。`,
-    `第 ${HAND_NODES[0]} 手指认节点开启。`
-  ];
+  room.finalWinRateBonus = {
+    black: 0,
+    white: 0
+  };
+  room.gameLog = [];
+  pushLog(room, "游戏开始：黑方 3 人，白方 3 人。");
+  pushLog(room, `第 ${HAND_NODES[0]} 手指认节点开启。`);
 }
 
 function getRequiredAccusers(room) {
@@ -170,7 +190,24 @@ function enterFinalAiPhase(room, message) {
   room.phase = "final-ai";
   room.accusations = {};
   room.finalAiReason = message;
-  room.gameLog.push(message);
+  pushLog(room, message, "result");
+}
+
+function applyFinalRoundBonus(room, foundTeams) {
+  if (HAND_NODES[room.currentNodeIndex] !== 150 || foundTeams.length === 0) {
+    return;
+  }
+
+  for (const result of foundTeams) {
+    const opponent = otherTeam(result.team);
+    room.finalWinRateBonus[result.team] += 10;
+    room.finalWinRateBonus[opponent] -= 10;
+    pushLog(
+      room,
+      `150 手终局指认奖励：${teamName(result.team)}指认成功，${teamName(result.team)} AI 胜率 +10，${teamName(opponent)} AI 胜率 -10。`,
+      "result"
+    );
+  }
 }
 
 function advanceAccusationNode(room) {
@@ -184,7 +221,7 @@ function advanceAccusationNode(room) {
   } else {
     room.currentNodeIndex += 1;
     room.accusations = {};
-    room.gameLog.push(`第 ${HAND_NODES[room.currentNodeIndex]} 手指认节点开启。`);
+    pushLog(room, `第 ${HAND_NODES[room.currentNodeIndex]} 手指认节点开启。`);
   }
 }
 
@@ -235,105 +272,129 @@ function evaluateAccusationNode(room) {
   const failedTeams = teamResults.filter((item) => item.status === "loyalists_failed");
 
   for (const result of foundTeams) {
-    const teamName = result.team === "black" ? "黑方" : "白方";
     const spy = room.players.find((player) => player.id === result.spyId);
 
     if (spy) {
       spy.eliminated = true;
     }
 
-    room.gameLog.push(`第 ${currentHand} 手：${teamName}两名忠臣均指认正确，内鬼出局。`);
+    pushLog(room, `第 ${currentHand} 手：${teamName(result.team)}两名忠臣均指认正确，${teamName(result.team)}内鬼出局。`, "result");
   }
 
+  applyFinalRoundBonus(room, foundTeams);
+
   for (const result of failedTeams) {
-    const teamName = result.team === "black" ? "黑方" : "白方";
-    room.gameLog.push(`第 ${currentHand} 手：${teamName}忠臣指认失败，本方忠臣判负。`);
+    pushLog(room, `第 ${currentHand} 手：${teamName(result.team)}忠臣指认失败，${teamName(result.team)}忠臣判负。`, "result");
   }
 
   if (failedTeams.length > 0) {
     room.phase = "ended";
-    room.finalResult = buildImmediateResult(failedTeams);
+    room.finalResult = buildAccusationFinalResult(room, failedTeams);
     room.accusations = {};
     return;
   }
 
   if (foundTeams.length === 0) {
-    room.gameLog.push(`第 ${currentHand} 手：未出现指认失败或成功抓出内鬼，棋局继续。`);
+    pushLog(room, `第 ${currentHand} 手：未出现指认失败或成功抓出内鬼，棋局继续。`, "result");
   }
 
   advanceAccusationNode(room);
 }
 
-function buildImmediateResult(failedTeams) {
-  const result = [];
-
-  for (const item of failedTeams) {
-    result.push({
-      team: item.team,
-      winner: "spy",
-      reason: "本方忠臣指认失败，本方内鬼获胜"
-    });
-  }
-
-  if (failedTeams.length === 1) {
-    const failedTeam = failedTeams[0].team;
-    const otherTeam = failedTeam === "black" ? "white" : "black";
-
-    result.push({
-      team: otherTeam,
-      winner: "team",
-      reason: "对方忠臣指认失败，本方 3 人获胜"
-    });
-  }
-
+function buildPlayerResult(player, outcome, reason) {
   return {
-    type: "accusation",
-    result
+    id: player.id,
+    name: player.name,
+    team: player.team,
+    role: player.role,
+    eliminated: Boolean(player.eliminated),
+    outcome,
+    reason
   };
 }
 
-function submitFinalAiResult(room, blackAiHigher) {
-  const blackSpy = getSpyInTeam(room, "black");
-  const whiteSpy = getSpyInTeam(room, "white");
+function buildAccusationFinalResult(room, failedTeams) {
+  const failedTeamSet = new Set(failedTeams.map((item) => item.team));
+  const failedTeamNames = failedTeams.map((item) => teamName(item.team)).join("、");
 
-  if (blackAiHigher) {
-    room.finalResult = {
-      type: "ai",
-      black: {
-        winner: "loyalists",
-        reason: "黑方 AI 胜率更高，黑方忠臣胜"
-      },
-      white: {
-        winner: "spy",
-        reason: "黑方 AI 胜率更高，白方内鬼胜"
-      },
-      revealed: {
-        blackSpyId: blackSpy?.id,
-        whiteSpyId: whiteSpy?.id
+  const players = room.players.map((player) => {
+    const playerTeamName = teamName(player.team);
+
+    if (player.role === "spy") {
+      if (player.eliminated) {
+        return buildPlayerResult(player, "lose", `${playerTeamName}内鬼已提前出局。`);
       }
-    };
 
-    room.gameLog.push("终局判定：黑方 AI 胜率更高。黑方忠臣胜，白方内鬼胜。");
-  } else {
-    room.finalResult = {
-      type: "ai",
-      black: {
-        winner: "spy",
-        reason: "白方 AI 胜率更高，黑方内鬼胜"
-      },
-      white: {
-        winner: "loyalists",
-        reason: "白方 AI 胜率更高，白方忠臣胜"
-      },
-      revealed: {
-        blackSpyId: blackSpy?.id,
-        whiteSpyId: whiteSpy?.id
+      if (failedTeamSet.has(player.team)) {
+        return buildPlayerResult(player, "win", `${playerTeamName}忠臣指认失败，${playerTeamName}内鬼获胜。`);
       }
-    };
 
-    room.gameLog.push("终局判定：白方 AI 胜率更高。白方忠臣胜，黑方内鬼胜。");
-  }
+      if (failedTeams.length === 1) {
+        return buildPlayerResult(player, "win", `${teamName(failedTeams[0].team)}忠臣指认失败，${playerTeamName}三名玩家获胜。`);
+      }
 
+      return buildPlayerResult(player, "lose", `${failedTeamNames}忠臣同时指认失败，只有未出局内鬼获胜。`);
+    }
+
+    if (failedTeamSet.has(player.team)) {
+      return buildPlayerResult(player, "lose", `${playerTeamName}忠臣指认失败，${playerTeamName}忠臣失败。`);
+    }
+
+    return buildPlayerResult(player, "win", `${failedTeamNames}忠臣指认失败，${playerTeamName}忠臣获胜。`);
+  });
+
+  return {
+    type: "accusation",
+    players,
+    summary: failedTeams.length === 1
+      ? `${teamName(failedTeams[0].team)}忠臣指认失败，游戏提前结束。`
+      : "黑方与白方忠臣同时指认失败，游戏提前结束。"
+  };
+}
+
+function buildAiFinalResult(room, winnerTeam) {
+  const loserTeam = otherTeam(winnerTeam);
+  const players = room.players.map((player) => {
+    const playerTeamName = teamName(player.team);
+
+    if (player.role === "spy") {
+      if (player.eliminated) {
+        return buildPlayerResult(player, "lose", `${playerTeamName}内鬼已提前出局。`);
+      }
+
+      if (player.team === loserTeam) {
+        return buildPlayerResult(player, "win", `${teamName(loserTeam)} AI 胜率更低，${teamName(loserTeam)}内鬼获胜。`);
+      }
+
+      return buildPlayerResult(player, "lose", `${teamName(winnerTeam)} AI 胜率更高，${teamName(winnerTeam)}内鬼失败。`);
+    }
+
+    if (player.team === winnerTeam) {
+      return buildPlayerResult(player, "win", `${teamName(winnerTeam)} AI 胜率更高，${teamName(winnerTeam)}忠臣获胜。`);
+    }
+
+    return buildPlayerResult(player, "lose", `${teamName(loserTeam)} AI 胜率更低，${teamName(loserTeam)}忠臣失败。`);
+  });
+
+  return {
+    type: "ai",
+    winnerTeam,
+    players,
+    bonus: room.finalWinRateBonus,
+    summary: `${teamName(winnerTeam)}调整后 AI 胜率更高，${teamName(winnerTeam)}忠臣获胜，${teamName(loserTeam)}未出局内鬼获胜。`
+  };
+}
+
+function submitFinalAiResult(room, winnerTeam) {
+  room.finalResult = buildAiFinalResult(room, winnerTeam);
+
+  const blackBonus = room.finalWinRateBonus.black;
+  const whiteBonus = room.finalWinRateBonus.white;
+  const bonusText = blackBonus || whiteBonus
+    ? `奖励修正：黑方 ${blackBonus >= 0 ? "+" : ""}${blackBonus}，白方 ${whiteBonus >= 0 ? "+" : ""}${whiteBonus}。`
+    : "无终局指认奖励修正。";
+
+  pushLog(room, `终局判定：${teamName(winnerTeam)}调整后 AI 胜率更高。${bonusText}`, "result");
   room.phase = "ended";
 }
 
@@ -434,13 +495,13 @@ io.on("connection", (socket) => {
     }
 
     if (!getSpyInTeam(room, player.team)) {
-      socket.emit("error:message", `${player.team === "black" ? "黑方" : "白方"}内鬼已找出，本轮指认无需操作。`);
+      socket.emit("error:message", `${teamName(player.team)}内鬼已找出，本轮指认无需操作。`);
       return;
     }
 
     if (abstain) {
       room.accusations[player.id] = "abstain";
-      room.gameLog.push(`${player.name} 已完成指认。`);
+      pushLog(room, `${player.name} 已完成指认。`);
       evaluateAccusationNode(room);
       emitRoom(room);
       return;
@@ -469,7 +530,7 @@ io.on("connection", (socket) => {
     }
 
     room.accusations[player.id] = target.id;
-    room.gameLog.push(`${player.name} 已完成指认。`);
+    pushLog(room, `${player.name} 已完成指认。`);
 
     evaluateAccusationNode(room);
     emitRoom(room);
@@ -485,11 +546,11 @@ io.on("connection", (socket) => {
     }
 
     if (winnerTeam !== "black" && winnerTeam !== "white") {
-      socket.emit("error:message", "请选择 AI 胜率更高的一方。");
+      socket.emit("error:message", "请选择调整后 AI 胜率更高的一方。\n如第 150 手存在指认成功，请先按黑方/白方奖励修正后再选择。");
       return;
     }
 
-    submitFinalAiResult(room, winnerTeam === "black");
+    submitFinalAiResult(room, winnerTeam);
     emitRoom(room);
   });
 
@@ -519,6 +580,10 @@ io.on("connection", (socket) => {
     room.gameLog = [];
     room.finalResult = null;
     room.finalAiReason = null;
+    room.finalWinRateBonus = {
+      black: 0,
+      white: 0
+    };
 
     emitRoom(room);
   });
