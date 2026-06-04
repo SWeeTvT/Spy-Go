@@ -331,7 +331,7 @@ function submitFinalAiResult(room, blackAiHigher) {
       }
     };
 
-    room.gameLog.push("终局判定：白方 AI 胜率更高。白方忠臣胜，黑方内鬼胜。厮");
+    room.gameLog.push("终局判定：白方 AI 胜率更高。白方忠臣胜，黑方内鬼胜。");
   }
 
   room.phase = "ended";
