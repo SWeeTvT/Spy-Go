@@ -33,6 +33,10 @@ body {
   color: var(--text);
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
 button,
 input {
   font: inherit;
@@ -61,6 +65,20 @@ button:disabled {
 
 button.secondary {
   background: #222;
+}
+
+button.text-button {
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--green);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+button.text-button.subtle {
+  color: var(--muted);
+  font-weight: 800;
 }
 
 input {
@@ -128,6 +146,13 @@ h2 {
   color: var(--muted);
   max-width: 620px;
   line-height: 1.7;
+}
+
+.utility-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
 }
 
 .status-pill,
@@ -384,6 +409,95 @@ h2 {
   font-size: 1.35rem;
 }
 
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.modal-card {
+  position: relative;
+  width: min(960px, 96vw);
+  max-height: 90vh;
+  overflow: auto;
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.22);
+  padding: 18px;
+}
+
+.small-modal {
+  width: min(460px, 92vw);
+}
+
+.rules-modal {
+  width: min(980px, 98vw);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 12px;
+}
+
+.modal-head h2 {
+  margin-bottom: 0;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: #222;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.about-content {
+  display: grid;
+  gap: 0.6rem;
+  line-height: 1.7;
+}
+
+.about-content p {
+  margin: 0;
+}
+
+.about-content a {
+  color: var(--green);
+  font-weight: 800;
+  word-break: break-all;
+}
+
+.rules-image-wrap {
+  overflow: auto;
+  border-radius: 16px;
+  background: #f6f5f1;
+  border: 1px solid var(--border);
+}
+
+#rulesImage {
+  display: block;
+  width: 100%;
+  min-width: 720px;
+  height: auto;
+}
+
 .toast {
   position: fixed;
   left: 50%;
@@ -395,7 +509,7 @@ h2 {
   border-radius: 999px;
   box-shadow: var(--shadow);
   font-weight: 800;
-  z-index: 20;
+  z-index: 60;
 }
 
 @media (max-width: 760px) {
@@ -416,5 +530,9 @@ h2 {
 
   .invite-row {
     grid-template-columns: 1fr;
+  }
+
+  #rulesImage {
+    min-width: 680px;
   }
 }
