@@ -29,7 +29,8 @@ function createRoom(roomId) {
     },
     accusations: {},
     gameLog: [],
-    finalResult: null
+    finalResult: null,
+    finalAiReason: null
   };
 }
 
@@ -54,6 +55,22 @@ function shuffle(array) {
   return copied;
 }
 
+function getSpyInTeam(room, team) {
+  return room.players.find((player) => player.team === team && player.role === "spy" && !player.eliminated);
+}
+
+function getLoyalistsInTeam(room, team) {
+  return room.players.filter((player) => player.team === team && player.role === "loyalist" && !player.eliminated);
+}
+
+function isTeamSpyFound(room, team) {
+  return !getSpyInTeam(room, team);
+}
+
+function areAllSpiesFound(room) {
+  return ["black", "white"].every((team) => isTeamSpyFound(room, team));
+}
+
 function publicRoomState(room) {
   return {
     id: room.id,
@@ -62,14 +79,21 @@ function publicRoomState(room) {
       id: player.id,
       name: player.name,
       team: player.team,
+      eliminated: Boolean(player.eliminated),
       connected: player.connected
     })),
+    teamStatus: {
+      blackSpyFound: isTeamSpyFound(room, "black"),
+      whiteSpyFound: isTeamSpyFound(room, "white"),
+      allSpiesFound: areAllSpiesFound(room)
+    },
     started: room.started,
     phase: room.phase,
     currentHand: HAND_NODES[room.currentNodeIndex] || 150,
     accusations: room.accusations,
     gameLog: room.gameLog,
-    finalResult: room.finalResult
+    finalResult: room.finalResult,
+    finalAiReason: room.finalAiReason
   };
 }
 
@@ -124,29 +148,39 @@ function assignRoles(room) {
   room.currentNodeIndex = 0;
   room.accusations = {};
   room.finalResult = null;
+  room.finalAiReason = null;
   room.gameLog = [
     `游戏开始：黑方 3 人，白方 3 人。`,
     `第 ${HAND_NODES[0]} 手指认节点开启。`
   ];
 }
 
-function getTeamPlayers(room, team) {
-  return room.players.filter((player) => player.team === team);
+function getRequiredAccusers(room) {
+  return room.players.filter((player) => {
+    return player.team && !player.eliminated && getSpyInTeam(room, player.team);
+  });
 }
 
-function getSpyInTeam(room, team) {
-  return room.players.find((player) => player.team === team && player.role === "spy" && !player.eliminated);
+function shouldWaitForAllRequiredAccusers(room) {
+  const requiredAccusers = getRequiredAccusers(room);
+  return requiredAccusers.some((player) => !room.accusations[player.id]);
 }
 
-function getLoyalistsInTeam(room, team) {
-  return room.players.filter((player) => player.team === team && player.role === "loyalist" && !player.eliminated);
+function enterFinalAiPhase(room, message) {
+  room.phase = "final-ai";
+  room.accusations = {};
+  room.finalAiReason = message;
+  room.gameLog.push(message);
 }
 
-function advanceAccusationNode(room, currentHand) {
+function advanceAccusationNode(room) {
+  if (areAllSpiesFound(room)) {
+    enterFinalAiPhase(room, "内鬼已全部找出，请正常行棋至 150 手比拼终局 AI 胜率。");
+    return;
+  }
+
   if (room.currentNodeIndex >= HAND_NODES.length - 1) {
-    room.phase = "final-ai";
-    room.accusations = {};
-    room.gameLog.push("第 150 手结束，进入 AI 胜率判定。");
+    enterFinalAiPhase(room, "第 150 手指认环节结束，进入 AI 胜率判定。");
   } else {
     room.currentNodeIndex += 1;
     room.accusations = {};
@@ -154,50 +188,49 @@ function advanceAccusationNode(room, currentHand) {
   }
 }
 
-function evaluateAccusationNode(room) {
-  const currentHand = HAND_NODES[room.currentNodeIndex];
-  const teamResults = [];
+function evaluateTeamAccusation(room, team) {
+  const spy = getSpyInTeam(room, team);
 
-  for (const team of ["black", "white"]) {
-    const loyalists = getLoyalistsInTeam(room, team);
-    const spy = getSpyInTeam(room, team);
-
-    if (!spy) {
-      teamResults.push({
-        team,
-        status: "resolved"
-      });
-      continue;
-    }
-
-    const votes = loyalists
-      .map((player) => room.accusations[player.id])
-      .filter(Boolean);
-
-    if (votes.length < 2) {
-      teamResults.push({
-        team,
-        status: "pending"
-      });
-      continue;
-    }
-
-    const bothSame = votes[0] === votes[1];
-
-    if (bothSame && votes[0] === spy.id) {
-      teamResults.push({
-        team,
-        status: "spy_found",
-        spyId: spy.id
-      });
-    } else {
-      teamResults.push({
-        team,
-        status: "loyalists_failed"
-      });
-    }
+  if (!spy) {
+    return {
+      team,
+      status: "resolved"
+    };
   }
 
+  const loyalists = getLoyalistsInTeam(room, team);
+  const loyalistVotes = loyalists.map((player) => room.accusations[player.id]);
+
+  if (loyalistVotes.some((vote) => vote === "abstain")) {
+    return {
+      team,
+      status: "no_action"
+    };
+  }
+
+  const bothSame = loyalistVotes[0] && loyalistVotes[0] === loyalistVotes[1];
+
+  if (bothSame && loyalistVotes[0] === spy.id) {
+    return {
+      team,
+      status: "spy_found",
+      spyId: spy.id
+    };
+  }
+
+  return {
+    team,
+    status: "loyalists_failed"
+  };
+}
+
+function evaluateAccusationNode(room) {
+  if (shouldWaitForAllRequiredAccusers(room)) {
+    return;
+  }
+
+  const currentHand = HAND_NODES[room.currentNodeIndex];
+  const teamResults = ["black", "white"].map((team) => evaluateTeamAccusation(room, team));
   const foundTeams = teamResults.filter((item) => item.status === "spy_found");
   const failedTeams = teamResults.filter((item) => item.status === "loyalists_failed");
 
@@ -209,51 +242,47 @@ function evaluateAccusationNode(room) {
       spy.eliminated = true;
     }
 
-    room.gameLog.push(`第 ${currentHand} 手：${teamName}忠臣成功指认内鬼，内鬼出局，棋局继续。`);
+    room.gameLog.push(`第 ${currentHand} 手：${teamName}两名忠臣均指认正确，内鬼出局。`);
   }
 
   for (const result of failedTeams) {
     const teamName = result.team === "black" ? "黑方" : "白方";
-    room.gameLog.push(`第 ${currentHand} 手：${teamName}忠臣指认失败，本队忠臣立即失败。`);
+    room.gameLog.push(`第 ${currentHand} 手：${teamName}忠臣指认失败，本方忠臣判负。`);
   }
 
   if (failedTeams.length > 0) {
     room.phase = "ended";
-    room.finalResult = buildImmediateResult(room, foundTeams, failedTeams);
+    room.finalResult = buildImmediateResult(failedTeams);
+    room.accusations = {};
     return;
   }
 
-  if (foundTeams.length > 0) {
-    advanceAccusationNode(room, currentHand);
-    return;
+  if (foundTeams.length === 0) {
+    room.gameLog.push(`第 ${currentHand} 手：未出现指认失败或成功抓出内鬼，棋局继续。`);
   }
 
-  const allTeamsSubmitted = teamResults.every((item) => item.status !== "pending");
-
-  if (!allTeamsSubmitted) {
-    return;
-  }
-
-  room.gameLog.push(`第 ${currentHand} 手：无人成功指认，棋局继续。`);
-  advanceAccusationNode(room, currentHand);
+  advanceAccusationNode(room);
 }
 
-function buildImmediateResult(room, foundTeams, failedTeams) {
+function buildImmediateResult(failedTeams) {
   const result = [];
-
-  for (const item of foundTeams) {
-    result.push({
-      team: item.team,
-      winner: "loyalists",
-      reason: "忠臣成功指认内鬼"
-    });
-  }
 
   for (const item of failedTeams) {
     result.push({
       team: item.team,
       winner: "spy",
-      reason: "忠臣指认失败"
+      reason: "本方忠臣指认失败，本方内鬼获胜"
+    });
+  }
+
+  if (failedTeams.length === 1) {
+    const failedTeam = failedTeams[0].team;
+    const otherTeam = failedTeam === "black" ? "white" : "black";
+
+    result.push({
+      team: otherTeam,
+      winner: "team",
+      reason: "对方忠臣指认失败，本方 3 人获胜"
     });
   }
 
@@ -302,7 +331,7 @@ function submitFinalAiResult(room, blackAiHigher) {
       }
     };
 
-    room.gameLog.push("终局判定：白方 AI 胜率更高。白方忠臣胜，黑方内鬼胜。");
+    room.gameLog.push("终局判定：白方 AI 胜率更高。白方忠臣胜，黑方内鬼胜。厮");
   }
 
   room.phase = "ended";
@@ -404,40 +433,43 @@ io.on("connection", (socket) => {
       return;
     }
 
-    if (player.role === "spy") {
-      if (abstain) {
-        room.accusations[player.id] = "abstain";
-        room.gameLog.push(`${player.name} 已完成指认。`);
-      } else {
-        socket.emit("error:message", "内鬼只能放弃指认。");
-        return;
-      }
-    } else {
-      const target = room.players.find((item) => item.id === targetId);
-
-      if (!target) {
-        socket.emit("error:message", "请选择要指认的玩家。");
-        return;
-      }
-
-      if (target.team !== player.team) {
-        socket.emit("error:message", "只能指认本队玩家。");
-        return;
-      }
-
-      if (target.id === player.id) {
-        socket.emit("error:message", "不能指认自己。");
-        return;
-      }
-
-      if (target.eliminated) {
-        socket.emit("error:message", "不能指认已经出局的玩家。");
-        return;
-      }
-
-      room.accusations[player.id] = target.id;
-      room.gameLog.push(`${player.name} 已完成指认。`);
+    if (!getSpyInTeam(room, player.team)) {
+      socket.emit("error:message", `${player.team === "black" ? "黑方" : "白方"}内鬼已找出，本轮指认无需操作。`);
+      return;
     }
+
+    if (abstain) {
+      room.accusations[player.id] = "abstain";
+      room.gameLog.push(`${player.name} 已完成指认。`);
+      evaluateAccusationNode(room);
+      emitRoom(room);
+      return;
+    }
+
+    const target = room.players.find((item) => item.id === targetId);
+
+    if (!target) {
+      socket.emit("error:message", "请选择要指认的玩家，或选择不指认。");
+      return;
+    }
+
+    if (target.team !== player.team) {
+      socket.emit("error:message", "只能指认本队玩家。");
+      return;
+    }
+
+    if (target.id === player.id) {
+      socket.emit("error:message", "不能指认自己。");
+      return;
+    }
+
+    if (target.eliminated) {
+      socket.emit("error:message", "不能指认已经出局的玩家。");
+      return;
+    }
+
+    room.accusations[player.id] = target.id;
+    room.gameLog.push(`${player.name} 已完成指认。`);
 
     evaluateAccusationNode(room);
     emitRoom(room);
@@ -486,6 +518,7 @@ io.on("connection", (socket) => {
     room.accusations = {};
     room.gameLog = [];
     room.finalResult = null;
+    room.finalAiReason = null;
 
     emitRoom(room);
   });
