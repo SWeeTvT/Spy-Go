@@ -13,6 +13,10 @@
         <p class="eyebrow">趣味围棋 · 内鬼模式</p>
         <h1>Spy Go</h1>
         <p class="subtitle">点开即用的 6 人内鬼模式身份与指认工具。</p>
+        <div class="utility-actions">
+          <button id="rulesButton" class="text-button" type="button">查看详细规则</button>
+          <button id="aboutButton" class="text-button subtle" type="button">作者信息</button>
+        </div>
       </div>
       <div class="status-pill" id="connectionStatus">连接中</div>
     </section>
@@ -118,6 +122,34 @@
       <span class="player-team"></span>
     </div>
   </template>
+
+  <div class="modal hidden" id="aboutModal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal></div>
+    <section class="modal-card small-modal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+      <div class="modal-head">
+        <h2 id="aboutTitle">作者信息</h2>
+        <button class="icon-button" type="button" data-close-modal>×</button>
+      </div>
+      <div class="about-content">
+        <p>Github：<a href="https://github.com/SWeeTvT/Spy-Go" target="_blank" rel="noreferrer">https://github.com/SWeeTvT/Spy-Go</a></p>
+        <p>B站：纱雾雾雾雾</p>
+        <p>欢迎留言交流讨论</p>
+      </div>
+    </section>
+  </div>
+
+  <div class="modal hidden" id="rulesModal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal></div>
+    <section class="modal-card rules-modal" role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
+      <div class="modal-head">
+        <h2 id="rulesTitle">详细规则</h2>
+        <button class="icon-button" type="button" data-close-modal>×</button>
+      </div>
+      <div class="rules-image-wrap">
+        <img id="rulesImage" alt="Spy Go 内鬼模式详细规则图" />
+      </div>
+    </section>
+  </div>
 
   <div class="toast hidden" id="toast"></div>
 
