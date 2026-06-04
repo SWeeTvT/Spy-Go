@@ -11,6 +11,7 @@ const gamePanel = document.querySelector("#gamePanel");
 const joinTitle = document.querySelector("#joinTitle");
 const roomPreview = document.querySelector("#roomPreview");
 const nameInput = document.querySelector("#nameInput");
+const rankInput = document.querySelector("#rankInput");
 const joinButton = document.querySelector("#joinButton");
 
 const inviteBox = document.querySelector("#inviteBox");
@@ -55,7 +56,7 @@ const PHASE_LABEL = {
 };
 
 initRoomFromUrl();
-restoreName();
+restorePlayerForm();
 initModalActions();
 
 socket.on("connect", () => {
@@ -82,6 +83,7 @@ socket.on("player:update", (state) => {
 
 joinButton.addEventListener("click", () => {
   const name = nameInput.value.trim();
+  const rank = rankInput.value.trim();
 
   if (!name) {
     showToast("请输入昵称");
@@ -89,11 +91,19 @@ joinButton.addEventListener("click", () => {
     return;
   }
 
+  if (!rank) {
+    showToast("请输入真实段位");
+    rankInput.focus();
+    return;
+  }
+
   localStorage.setItem("spy-go-name", name);
+  localStorage.setItem("spy-go-rank", rank);
 
   socket.emit("room:join", {
     roomId: joinedRoomId,
-    name
+    name,
+    rank
   });
 
   joinPanel.classList.add("hidden");
@@ -166,10 +176,16 @@ function closeAllModals() {
   document.body.classList.remove("modal-open");
 }
 
-function restoreName() {
+function restorePlayerForm() {
   const savedName = localStorage.getItem("spy-go-name");
+  const savedRank = localStorage.getItem("spy-go-rank");
+
   if (savedName) {
     nameInput.value = savedName;
+  }
+
+  if (savedRank) {
+    rankInput.value = savedRank;
   }
 }
 
@@ -251,6 +267,7 @@ function renderCurrentPlayer() {
   playerInfo.innerHTML = `
     <div class="identity">
       你是：${escapeHtml(playerState.name)}
+      <span class="rank-text">${escapeHtml(playerState.rank || "未填写段位")}</span>
       <strong>${teamText} · ${roleText}${eliminatedText}</strong>
     </div>
     <p class="hint">${playerState.isHost ? "你是房主。满 6 人后可以开始游戏。" : "等待房主操作。"}</p>
@@ -266,6 +283,11 @@ function renderPlayers() {
     node.querySelector(".player-name").textContent = player.name;
     node.querySelector(".host-mark").textContent =
       player.id === roomState.hostId ? "房主" : "";
+
+    const rankNode = node.querySelector(".player-rank");
+    if (rankNode) {
+      rankNode.textContent = player.rank || "未填写段位";
+    }
 
     const teamText = player.team ? TEAM_LABEL[player.team] : "等待分队";
     node.querySelector(".player-team").textContent =
@@ -311,7 +333,7 @@ function renderWaitingStage() {
     <div class="notice">
       当前正在等待玩家加入。还需要 <strong>${missing}</strong> 人。
       <br />
-      分享邀请链接后，其他人点开网页输入昵称即可加入。
+      分享邀请链接后，其他人点开网页输入昵称和真实段位即可加入。
     </div>
   `;
 }
@@ -394,7 +416,7 @@ function renderAccusingStage() {
       <div class="choice-card">
         <label>
           <input type="radio" name="target" value="${player.id}" />
-          ${escapeHtml(player.name)}
+          ${escapeHtml(player.name)} <span class="rank-text">${escapeHtml(player.rank || "未填写段位")}</span>
         </label>
       </div>
     `;
@@ -510,6 +532,7 @@ function renderEndedStage() {
         <div class="result-item ${outcomeClass}">
           <div class="result-main">
             <strong>${escapeHtml(item.name)}</strong>
+            <span>${escapeHtml(item.rank || "未填写段位")}</span>
             <span>${team} · ${role}${item.eliminated ? " · 已出局" : ""}</span>
             <b>${outcomeText}</b>
           </div>
