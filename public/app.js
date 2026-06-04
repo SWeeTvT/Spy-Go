@@ -63,8 +63,6 @@ socket.on("disconnect", () => {
 
 socket.on("error:message", (message) => {
   showToast(message);
-  joinPanel.classList.remove("hidden");
-  gamePanel.classList.add("hidden");
 });
 
 socket.on("room:update", (state) => {
@@ -408,13 +406,20 @@ function renderAccusingStage() {
 
 function renderFinalAiStage() {
   const finalReason = roomState.finalAiReason || "第 150 手结束，无人成功指认。";
+  const blackBonus = roomState.finalWinRateBonus?.black || 0;
+  const whiteBonus = roomState.finalWinRateBonus?.white || 0;
+  const bonusText = blackBonus || whiteBonus
+    ? `终局奖励修正：黑方 ${formatBonus(blackBonus)}，白方 ${formatBonus(whiteBonus)}。`
+    : "终局奖励修正：无。";
 
   if (!playerState.isHost) {
     stageBox.innerHTML = `
       <div class="notice">
         ${escapeHtml(finalReason)}
         <br />
-        等待房主提交 AI 胜率更高的一方。
+        ${escapeHtml(bonusText)}
+        <br />
+        等待房主提交调整后 AI 胜率更高的一方。
       </div>
     `;
     return;
@@ -424,12 +429,14 @@ function renderFinalAiStage() {
     <div class="notice">
       ${escapeHtml(finalReason)}
       <br />
-      请房主根据实际棋局选择 AI 胜率更高的一方。
+      ${escapeHtml(bonusText)}
+      <br />
+      请房主按奖励修正后的结果，选择 AI 胜率更高的一方。
     </div>
 
     <div class="choice-grid">
-      <button id="blackAiButton">黑方 AI 胜率更高</button>
-      <button id="whiteAiButton">白方 AI 胜率更高</button>
+      <button id="blackAiButton">黑方调整后 AI 胜率更高</button>
+      <button id="whiteAiButton">白方调整后 AI 胜率更高</button>
     </div>
   `;
 
@@ -456,45 +463,34 @@ function renderEndedStage() {
     return;
   }
 
-  if (result.type === "accusation") {
-    const items = result.result.map((item) => {
+  if (Array.isArray(result.players)) {
+    const items = result.players.map((item) => {
       const team = TEAM_LABEL[item.team];
-      const winner = item.winner === "spy"
-        ? "内鬼胜"
-        : item.winner === "team"
-          ? "全队胜"
-          : "忠臣胜";
+      const role = ROLE_LABEL[item.role];
+      const outcomeText = item.outcome === "win" ? "胜" : "负";
+      const outcomeClass = item.outcome === "win" ? "win" : "lose";
 
       return `
-        <div class="result-item">
-          ${team}：${winner}
-          <br />
+        <div class="result-item ${outcomeClass}">
+          <div class="result-main">
+            <strong>${escapeHtml(item.name)}</strong>
+            <span>${team} · ${role}${item.eliminated ? " · 已出局" : ""}</span>
+            <b>${outcomeText}</b>
+          </div>
           <small>${escapeHtml(item.reason)}</small>
         </div>
       `;
     }).join("");
 
+    const bonus = result.bonus
+      ? `<p class="hint">终局奖励修正：黑方 ${formatBonus(result.bonus.black || 0)}，白方 ${formatBonus(result.bonus.white || 0)}。</p>`
+      : "";
+
     stageBox.innerHTML = `
+      <div class="notice"><strong>${escapeHtml(result.summary || "游戏结束。")}</strong></div>
+      ${bonus}
       <div class="result-box">
         ${items}
-      </div>
-    `;
-    return;
-  }
-
-  if (result.type === "ai") {
-    stageBox.innerHTML = `
-      <div class="result-box">
-        <div class="result-item">
-          黑方：${result.black.winner === "loyalists" ? "忠臣胜" : "内鬼胜"}
-          <br />
-          <small>${escapeHtml(result.black.reason)}</small>
-        </div>
-        <div class="result-item">
-          白方：${result.white.winner === "loyalists" ? "忠臣胜" : "内鬼胜"}
-          <br />
-          <small>${escapeHtml(result.white.reason)}</small>
-        </div>
       </div>
     `;
     return;
@@ -512,8 +508,17 @@ function renderLog() {
   logBox.innerHTML = roomState.gameLog
     .slice()
     .reverse()
-    .map((item) => `<div class="log-item">${escapeHtml(item)}</div>`)
+    .map((item) => {
+      const text = typeof item === "string" ? item : item.text;
+      const type = typeof item === "string" ? "normal" : item.type || "normal";
+      const className = type === "result" ? "log-item result-log" : "log-item";
+      return `<div class="${className}">${escapeHtml(text)}</div>`;
+    })
     .join("");
+}
+
+function formatBonus(value) {
+  return `${value >= 0 ? "+" : ""}${value}`;
 }
 
 function showToast(message) {
