@@ -14,6 +14,15 @@ app.use(express.static(path.join(__dirname, "public")));
 const rooms = new Map();
 
 const HAND_NODES = [50, 100, 150];
+const SEATS = ["black1", "black2", "black3", "white1", "white2", "white3"];
+const SEAT_LABEL = {
+  black1: "黑1",
+  black2: "黑2",
+  black3: "黑3",
+  white1: "白1",
+  white2: "白2",
+  white3: "白3"
+};
 
 function createRoom(roomId) {
   return {
@@ -46,6 +55,15 @@ function sanitizeName(name) {
 function sanitizeRank(rank) {
   const value = String(rank || "").trim();
   return value.slice(0, 16) || "未填写段位";
+}
+
+function sanitizeSeat(seat) {
+  const value = String(seat || "").trim();
+  return SEATS.includes(value) ? value : "";
+}
+
+function getSeatTeam(seat) {
+  return String(seat || "").startsWith("black") ? "black" : "white";
 }
 
 function getRoom(roomId) {
@@ -100,6 +118,8 @@ function publicRoomState(room) {
       id: player.id,
       name: player.name,
       rank: player.rank,
+      seat: player.seat,
+      seatLabel: SEAT_LABEL[player.seat] || "未选座位",
       team: player.team,
       eliminated: Boolean(player.eliminated),
       connected: player.connected
@@ -128,6 +148,8 @@ function privatePlayerState(room, socketId) {
     id: player.id,
     name: player.name,
     rank: player.rank,
+    seat: player.seat,
+    seatLabel: SEAT_LABEL[player.seat] || "未选座位",
     team: player.team,
     role: player.role,
     eliminated: Boolean(player.eliminated),
@@ -143,20 +165,28 @@ function emitRoom(room) {
   }
 }
 
-function assignRoles(room) {
-  const players = shuffle(room.players);
+function validateSeatConfig(room) {
+  const selectedSeats = room.players.map((player) => player.seat);
+  const selectedSet = new Set(selectedSeats);
 
+  const hasAllSeats = SEATS.every((seat) => selectedSet.has(seat));
+  const hasNoDuplicate = selectedSet.size === selectedSeats.length;
+
+  return room.players.length === 6 && hasAllSeats && hasNoDuplicate;
+}
+
+function assignRoles(room) {
   room.teams.black = [];
   room.teams.white = [];
 
-  players.forEach((player, index) => {
-    player.team = index < 3 ? "black" : "white";
+  room.players.forEach((player) => {
+    player.team = getSeatTeam(player.seat);
     player.role = "loyalist";
     player.eliminated = false;
   });
 
-  const blackPlayers = players.filter((player) => player.team === "black");
-  const whitePlayers = players.filter((player) => player.team === "white");
+  const blackPlayers = room.players.filter((player) => player.team === "black");
+  const whitePlayers = room.players.filter((player) => player.team === "white");
 
   const blackSpy = blackPlayers[Math.floor(Math.random() * blackPlayers.length)];
   const whiteSpy = whitePlayers[Math.floor(Math.random() * whitePlayers.length)];
@@ -179,6 +209,7 @@ function assignRoles(room) {
   };
   room.gameLog = [];
   pushLog(room, "游戏开始：黑方 3 人，白方 3 人。");
+  pushLog(room, "座位确认：黑1、黑2、黑3、白1、白2、白3 均已就位。");
   pushLog(room, `第 ${HAND_NODES[0]} 手指认节点开启。`);
 }
 
@@ -313,6 +344,8 @@ function buildPlayerResult(player, outcome, reason) {
     id: player.id,
     name: player.name,
     rank: player.rank,
+    seat: player.seat,
+    seatLabel: SEAT_LABEL[player.seat] || "未选座位",
     team: player.team,
     role: player.role,
     eliminated: Boolean(player.eliminated),
@@ -432,11 +465,17 @@ function removePlayer(socket) {
 }
 
 io.on("connection", (socket) => {
-  socket.on("room:join", ({ roomId, name, rank }) => {
+  socket.on("room:join", ({ roomId, name, rank, seat }) => {
     const safeRoomId = String(roomId || "").trim().slice(0, 24);
+    const safeSeat = sanitizeSeat(seat);
 
     if (!safeRoomId) {
       socket.emit("error:message", "请输入房间号。");
+      return;
+    }
+
+    if (!safeSeat) {
+      socket.emit("error:message", "请选择棋手座位。");
       return;
     }
 
@@ -458,6 +497,7 @@ io.on("connection", (socket) => {
       id: socket.id,
       name: sanitizeName(name),
       rank: sanitizeRank(rank),
+      seat: safeSeat,
       team: null,
       role: null,
       eliminated: false,
@@ -484,6 +524,11 @@ io.on("connection", (socket) => {
 
     if (room.players.length !== 6) {
       socket.emit("error:message", "需要正好 6 名玩家才能开始。");
+      return;
+    }
+
+    if (!validateSeatConfig(room)) {
+      socket.emit("error:message", "棋手座位有误，无法开始游戏。请确认 6 名玩家分别为黑1、黑2、黑3、白1、白2、白3，且不可重复。");
       return;
     }
 
