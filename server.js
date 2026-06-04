@@ -82,6 +82,7 @@ function privatePlayerState(room, socketId) {
     name: player.name,
     team: player.team,
     role: player.role,
+    eliminated: Boolean(player.eliminated),
     isHost: room.hostId === socketId
   };
 }
@@ -103,6 +104,7 @@ function assignRoles(room) {
   players.forEach((player, index) => {
     player.team = index < 3 ? "black" : "white";
     player.role = "loyalist";
+    player.eliminated = false;
   });
 
   const blackPlayers = players.filter((player) => player.team === "black");
@@ -133,11 +135,23 @@ function getTeamPlayers(room, team) {
 }
 
 function getSpyInTeam(room, team) {
-  return room.players.find((player) => player.team === team && player.role === "spy");
+  return room.players.find((player) => player.team === team && player.role === "spy" && !player.eliminated);
 }
 
 function getLoyalistsInTeam(room, team) {
-  return room.players.filter((player) => player.team === team && player.role === "loyalist");
+  return room.players.filter((player) => player.team === team && player.role === "loyalist" && !player.eliminated);
+}
+
+function advanceAccusationNode(room, currentHand) {
+  if (room.currentNodeIndex >= HAND_NODES.length - 1) {
+    room.phase = "final-ai";
+    room.accusations = {};
+    room.gameLog.push("第 150 手结束，进入 AI 胜率判定。");
+  } else {
+    room.currentNodeIndex += 1;
+    room.accusations = {};
+    room.gameLog.push(`第 ${HAND_NODES[room.currentNodeIndex]} 手指认节点开启。`);
+  }
 }
 
 function evaluateAccusationNode(room) {
@@ -147,6 +161,14 @@ function evaluateAccusationNode(room) {
   for (const team of ["black", "white"]) {
     const loyalists = getLoyalistsInTeam(room, team);
     const spy = getSpyInTeam(room, team);
+
+    if (!spy) {
+      teamResults.push({
+        team,
+        status: "resolved"
+      });
+      continue;
+    }
 
     const votes = loyalists
       .map((player) => room.accusations[player.id])
@@ -181,7 +203,13 @@ function evaluateAccusationNode(room) {
 
   for (const result of foundTeams) {
     const teamName = result.team === "black" ? "黑方" : "白方";
-    room.gameLog.push(`第 ${currentHand} 手：${teamName}忠臣成功指认内鬼。`);
+    const spy = room.players.find((player) => player.id === result.spyId);
+
+    if (spy) {
+      spy.eliminated = true;
+    }
+
+    room.gameLog.push(`第 ${currentHand} 手：${teamName}忠臣成功指认内鬼，内鬼出局，棋局继续。`);
   }
 
   for (const result of failedTeams) {
@@ -189,9 +217,14 @@ function evaluateAccusationNode(room) {
     room.gameLog.push(`第 ${currentHand} 手：${teamName}忠臣指认失败，本队忠臣立即失败。`);
   }
 
-  if (foundTeams.length > 0 || failedTeams.length > 0) {
+  if (failedTeams.length > 0) {
     room.phase = "ended";
     room.finalResult = buildImmediateResult(room, foundTeams, failedTeams);
+    return;
+  }
+
+  if (foundTeams.length > 0) {
+    advanceAccusationNode(room, currentHand);
     return;
   }
 
@@ -202,15 +235,7 @@ function evaluateAccusationNode(room) {
   }
 
   room.gameLog.push(`第 ${currentHand} 手：无人成功指认，棋局继续。`);
-
-  if (room.currentNodeIndex >= HAND_NODES.length - 1) {
-    room.phase = "final-ai";
-    room.gameLog.push("第 150 手结束，进入 AI 胜率判定。");
-  } else {
-    room.currentNodeIndex += 1;
-    room.accusations = {};
-    room.gameLog.push(`第 ${HAND_NODES[room.currentNodeIndex]} 手指认节点开启。`);
-  }
+  advanceAccusationNode(room, currentHand);
 }
 
 function buildImmediateResult(room, foundTeams, failedTeams) {
@@ -336,6 +361,7 @@ io.on("connection", (socket) => {
       name: sanitizeName(name),
       team: null,
       role: null,
+      eliminated: false,
       connected: true
     };
 
@@ -373,10 +399,15 @@ io.on("connection", (socket) => {
     const player = room.players.find((item) => item.id === socket.id);
     if (!player) return;
 
+    if (player.eliminated) {
+      socket.emit("error:message", "出局玩家无需参与指认。");
+      return;
+    }
+
     if (player.role === "spy") {
       if (abstain) {
         room.accusations[player.id] = "abstain";
-        room.gameLog.push(`${player.name} 已放弃指认。`);
+        room.gameLog.push(`${player.name} 已完成指认。`);
       } else {
         socket.emit("error:message", "内鬼只能放弃指认。");
         return;
@@ -396,6 +427,11 @@ io.on("connection", (socket) => {
 
       if (target.id === player.id) {
         socket.emit("error:message", "不能指认自己。");
+        return;
+      }
+
+      if (target.eliminated) {
+        socket.emit("error:message", "不能指认已经出局的玩家。");
         return;
       }
 
@@ -437,6 +473,7 @@ io.on("connection", (socket) => {
     for (const player of room.players) {
       player.team = null;
       player.role = null;
+      player.eliminated = false;
     }
 
     room.started = false;
