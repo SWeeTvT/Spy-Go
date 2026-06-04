@@ -65,11 +65,6 @@ function sanitizeSeat(seat) {
   return SEATS.includes(value) ? value : "";
 }
 
-function sanitizePlayerToken(playerToken) {
-  const value = String(playerToken || "").trim();
-  return /^[a-zA-Z0-9_-]{16,80}$/.test(value) ? value : "";
-}
-
 function getSeatTeam(seat) {
   return String(seat || "").startsWith("black") ? "black" : "white";
 }
@@ -79,15 +74,6 @@ function getRoom(roomId) {
     rooms.set(roomId, createRoom(roomId));
   }
   return rooms.get(roomId);
-}
-
-function shuffle(array) {
-  const copied = [...array];
-  for (let i = copied.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copied[i], copied[j]] = [copied[j], copied[i]];
-  }
-  return copied;
 }
 
 function teamName(team) {
@@ -207,7 +193,6 @@ function reconnectExistingPlayer(room, player, socket, incomingData) {
   player.connected = true;
 
   if (!room.started) {
-    player.name = sanitizeName(incomingData.name);
     player.rank = sanitizeRank(incomingData.rank);
     player.seat = sanitizeSeat(incomingData.seat) || player.seat;
   }
@@ -515,26 +500,21 @@ function removePlayer(socket) {
 }
 
 io.on("connection", (socket) => {
-  socket.on("room:join", ({ roomId, name, rank, seat, playerToken }) => {
+  socket.on("room:join", ({ roomId, name, rank, seat }) => {
     const safeRoomId = String(roomId || "").trim().slice(0, 24);
+    const safeName = sanitizeName(name);
     const safeSeat = sanitizeSeat(seat);
-    const safePlayerToken = sanitizePlayerToken(playerToken);
 
     if (!safeRoomId) {
       socket.emit("error:message", "请输入房间号。");
       return;
     }
 
-    if (!safePlayerToken) {
-      socket.emit("error:message", "身份恢复信息无效，请刷新页面后重试。");
-      return;
-    }
-
     const room = getRoom(safeRoomId);
-    const existingPlayer = room.players.find((player) => player.token === safePlayerToken);
+    const existingPlayer = room.players.find((player) => player.name === safeName);
 
     if (existingPlayer) {
-      reconnectExistingPlayer(room, existingPlayer, socket, { name, rank, seat });
+      reconnectExistingPlayer(room, existingPlayer, socket, { rank, seat });
       return;
     }
 
@@ -544,7 +524,7 @@ io.on("connection", (socket) => {
     }
 
     if (room.started) {
-      socket.emit("error:message", "游戏已经开始，只有本房间原玩家可以恢复连接。");
+      socket.emit("error:message", "游戏已经开始。若要恢复身份，请输入与原玩家完全相同的昵称。");
       return;
     }
 
@@ -557,8 +537,7 @@ io.on("connection", (socket) => {
 
     const player = {
       id: socket.id,
-      token: safePlayerToken,
-      name: sanitizeName(name),
+      name: safeName,
       rank: sanitizeRank(rank),
       seat: safeSeat,
       team: null,
