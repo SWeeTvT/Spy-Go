@@ -12,6 +12,7 @@ const joinTitle = document.querySelector("#joinTitle");
 const roomPreview = document.querySelector("#roomPreview");
 const nameInput = document.querySelector("#nameInput");
 const rankInput = document.querySelector("#rankInput");
+const seatInput = document.querySelector("#seatInput");
 const joinButton = document.querySelector("#joinButton");
 
 const inviteBox = document.querySelector("#inviteBox");
@@ -55,6 +56,8 @@ const PHASE_LABEL = {
   ended: "游戏结束"
 };
 
+const SEAT_ORDER = ["black1", "black2", "black3", "white1", "white2", "white3"];
+
 initRoomFromUrl();
 restorePlayerForm();
 initModalActions();
@@ -84,6 +87,7 @@ socket.on("player:update", (state) => {
 joinButton.addEventListener("click", () => {
   const name = nameInput.value.trim();
   const rank = rankInput.value.trim();
+  const seat = seatInput.value.trim();
 
   if (!name) {
     showToast("请输入昵称");
@@ -97,13 +101,21 @@ joinButton.addEventListener("click", () => {
     return;
   }
 
+  if (!seat) {
+    showToast("请选择棋手座位");
+    seatInput.focus();
+    return;
+  }
+
   localStorage.setItem("spy-go-name", name);
   localStorage.setItem("spy-go-rank", rank);
+  localStorage.setItem("spy-go-seat", seat);
 
   socket.emit("room:join", {
     roomId: joinedRoomId,
     name,
-    rank
+    rank,
+    seat
   });
 
   joinPanel.classList.add("hidden");
@@ -179,6 +191,7 @@ function closeAllModals() {
 function restorePlayerForm() {
   const savedName = localStorage.getItem("spy-go-name");
   const savedRank = localStorage.getItem("spy-go-rank");
+  const savedSeat = localStorage.getItem("spy-go-seat");
 
   if (savedName) {
     nameInput.value = savedName;
@@ -186,6 +199,10 @@ function restorePlayerForm() {
 
   if (savedRank) {
     rankInput.value = savedRank;
+  }
+
+  if (savedSeat) {
+    seatInput.value = savedSeat;
   }
 }
 
@@ -268,28 +285,37 @@ function renderCurrentPlayer() {
     <div class="identity">
       你是：${escapeHtml(playerState.name)}
       <span class="rank-text">${escapeHtml(playerState.rank || "未填写段位")}</span>
+      <span class="rank-text">${escapeHtml(playerState.seatLabel || "未选座位")}</span>
       <strong>${teamText} · ${roleText}${eliminatedText}</strong>
     </div>
-    <p class="hint">${playerState.isHost ? "你是房主。满 6 人后可以开始游戏。" : "等待房主操作。"}</p>
+    <p class="hint">${playerState.isHost ? "你是房主。满 6 人且座位无误后可以开始游戏。" : "等待房主操作。"}</p>
   `;
 }
 
 function renderPlayers() {
-  playersList.innerHTML = "";
+  playersList.innerHTML = `
+    <div class="player-table-head">
+      <span>玩家昵称</span>
+      <span>段位</span>
+      <span>棋手座位</span>
+      <span>分队状态</span>
+      <span>房主</span>
+    </div>
+  `;
 
-  for (const player of roomState.players) {
+  const sortedPlayers = [...roomState.players].sort((a, b) => {
+    return SEAT_ORDER.indexOf(a.seat) - SEAT_ORDER.indexOf(b.seat);
+  });
+
+  for (const player of sortedPlayers) {
     const node = playerTemplate.content.cloneNode(true);
 
     node.querySelector(".player-name").textContent = player.name;
-    node.querySelector(".host-mark").textContent =
-      player.id === roomState.hostId ? "房主" : "";
+    node.querySelector(".player-rank").textContent = player.rank || "未填写段位";
+    node.querySelector(".player-seat").textContent = player.seatLabel || "未选座位";
+    node.querySelector(".host-mark").textContent = player.id === roomState.hostId ? "房主" : "";
 
-    const rankNode = node.querySelector(".player-rank");
-    if (rankNode) {
-      rankNode.textContent = player.rank || "未填写段位";
-    }
-
-    const teamText = player.team ? TEAM_LABEL[player.team] : "等待分队";
+    const teamText = player.team ? TEAM_LABEL[player.team] : "等待开始";
     node.querySelector(".player-team").textContent =
       player.eliminated ? `${teamText} · 已出局` : teamText;
 
@@ -333,7 +359,7 @@ function renderWaitingStage() {
     <div class="notice">
       当前正在等待玩家加入。还需要 <strong>${missing}</strong> 人。
       <br />
-      分享邀请链接后，其他人点开网页输入昵称和真实段位即可加入。
+      请提前与其他玩家商议好棋手座位，确保 6 名玩家分别为黑1、黑2、黑3、白1、白2、白3，缺一不可且不可重复。
     </div>
   `;
 }
@@ -416,7 +442,9 @@ function renderAccusingStage() {
       <div class="choice-card">
         <label>
           <input type="radio" name="target" value="${player.id}" />
-          ${escapeHtml(player.name)} <span class="rank-text">${escapeHtml(player.rank || "未填写段位")}</span>
+          ${escapeHtml(player.name)}
+          <span class="rank-text">${escapeHtml(player.rank || "未填写段位")}</span>
+          <span class="rank-text">${escapeHtml(player.seatLabel || "未选座位")}</span>
         </label>
       </div>
     `;
@@ -532,7 +560,7 @@ function renderEndedStage() {
         <div class="result-item ${outcomeClass}">
           <div class="result-main">
             <strong>${escapeHtml(item.name)}</strong>
-            <span>${escapeHtml(item.rank || "未填写段位")}</span>
+            <span>${escapeHtml(item.rank || "未填写段位")} · ${escapeHtml(item.seatLabel || "未选座位")}</span>
             <span>${team} · ${role}${item.eliminated ? " · 已出局" : ""}</span>
             <b>${outcomeText}</b>
           </div>
