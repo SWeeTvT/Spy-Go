@@ -65,6 +65,11 @@ function sanitizeSeat(seat) {
   return SEATS.includes(value) ? value : "";
 }
 
+function sanitizePlayerToken(playerToken) {
+  const value = String(playerToken || "").trim();
+  return /^[a-zA-Z0-9_-]{16,80}$/.test(value) ? value : "";
+}
+
 function getSeatTeam(seat) {
   return String(seat || "").startsWith("black") ? "black" : "white";
 }
@@ -164,8 +169,50 @@ function emitRoom(room) {
   io.to(room.id).emit("room:update", publicRoomState(room));
 
   for (const player of room.players) {
-    io.to(player.id).emit("player:update", privatePlayerState(room, player.id));
+    if (player.connected) {
+      io.to(player.id).emit("player:update", privatePlayerState(room, player.id));
+    }
   }
+}
+
+function replacePlayerSocketReferences(room, oldSocketId, newSocketId) {
+  if (!oldSocketId || oldSocketId === newSocketId) return;
+
+  if (room.hostId === oldSocketId) {
+    room.hostId = newSocketId;
+  }
+
+  room.teams.black = room.teams.black.map((id) => id === oldSocketId ? newSocketId : id);
+  room.teams.white = room.teams.white.map((id) => id === oldSocketId ? newSocketId : id);
+
+  if (Object.prototype.hasOwnProperty.call(room.accusations, oldSocketId)) {
+    room.accusations[newSocketId] = room.accusations[oldSocketId];
+    delete room.accusations[oldSocketId];
+  }
+
+  for (const [voterId, targetId] of Object.entries(room.accusations)) {
+    if (targetId === oldSocketId) {
+      room.accusations[voterId] = newSocketId;
+    }
+  }
+}
+
+function reconnectExistingPlayer(room, player, socket, incomingData) {
+  const oldSocketId = player.id;
+
+  socket.join(room.id);
+  replacePlayerSocketReferences(room, oldSocketId, socket.id);
+
+  player.id = socket.id;
+  player.connected = true;
+
+  if (!room.started) {
+    player.name = sanitizeName(incomingData.name);
+    player.rank = sanitizeRank(incomingData.rank);
+    player.seat = sanitizeSeat(incomingData.seat) || player.seat;
+  }
+
+  emitRoom(room);
 }
 
 function validateSeatConfig(room) {
@@ -468,12 +515,26 @@ function removePlayer(socket) {
 }
 
 io.on("connection", (socket) => {
-  socket.on("room:join", ({ roomId, name, rank, seat }) => {
+  socket.on("room:join", ({ roomId, name, rank, seat, playerToken }) => {
     const safeRoomId = String(roomId || "").trim().slice(0, 24);
     const safeSeat = sanitizeSeat(seat);
+    const safePlayerToken = sanitizePlayerToken(playerToken);
 
     if (!safeRoomId) {
       socket.emit("error:message", "请输入房间号。");
+      return;
+    }
+
+    if (!safePlayerToken) {
+      socket.emit("error:message", "身份恢复信息无效，请刷新页面后重试。");
+      return;
+    }
+
+    const room = getRoom(safeRoomId);
+    const existingPlayer = room.players.find((player) => player.token === safePlayerToken);
+
+    if (existingPlayer) {
+      reconnectExistingPlayer(room, existingPlayer, socket, { name, rank, seat });
       return;
     }
 
@@ -482,10 +543,8 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const room = getRoom(safeRoomId);
-
     if (room.started) {
-      socket.emit("error:message", "游戏已经开始，无法加入。");
+      socket.emit("error:message", "游戏已经开始，只有本房间原玩家可以恢复连接。");
       return;
     }
 
@@ -498,6 +557,7 @@ io.on("connection", (socket) => {
 
     const player = {
       id: socket.id,
+      token: safePlayerToken,
       name: sanitizeName(name),
       rank: sanitizeRank(rank),
       seat: safeSeat,
