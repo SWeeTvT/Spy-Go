@@ -39,6 +39,21 @@
         <input id="rankInput" maxlength="16" placeholder="例如：业余5段 / 野狐3D" />
       </label>
 
+      <label>
+        棋手座位
+        <select id="seatInput">
+          <option value="">请选择棋手座位</option>
+          <option value="black1">黑1</option>
+          <option value="black2">黑2</option>
+          <option value="black3">黑3</option>
+          <option value="white1">白1</option>
+          <option value="white2">白2</option>
+          <option value="white3">白3</option>
+        </select>
+      </label>
+
+      <p class="hint seat-warning">请提前与其他玩家商议好，切忌选到重复座位。</p>
+
       <button id="joinButton">进入房间</button>
 
       <div class="invite-box hidden" id="inviteBox">
@@ -50,7 +65,7 @@
       </div>
 
       <p class="hint">
-        分享邀请链接后，其他人点开网页输入昵称和真实段位即可加入同一房间。
+        分享邀请链接后，其他人点开网页输入昵称、真实段位并选择棋手座位即可加入同一房间。
       </p>
     </section>
 
@@ -120,12 +135,11 @@
 
   <template id="playerTemplate">
     <div class="player-row">
-      <div>
-        <strong class="player-name"></strong>
-        <span class="host-mark"></span>
-        <span class="player-rank"></span>
-      </div>
+      <span class="player-name"></span>
+      <span class="player-rank"></span>
+      <span class="player-seat"></span>
       <span class="player-team"></span>
+      <span class="host-mark"></span>
     </div>
   </template>
 
