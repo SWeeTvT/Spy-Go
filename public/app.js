@@ -33,7 +33,6 @@ const aboutButton = document.querySelector("#aboutButton");
 const rulesButton = document.querySelector("#rulesButton");
 const aboutModal = document.querySelector("#aboutModal");
 const rulesModal = document.querySelector("#rulesModal");
-const rulesImage = document.querySelector("#rulesImage");
 const toast = document.querySelector("#toast");
 
 const playerTemplate = document.querySelector("#playerTemplate");
@@ -137,10 +136,6 @@ function initRoomFromUrl() {
 }
 
 function initModalActions() {
-  if (rulesImage && window.SPY_GO_RULES_IMAGE) {
-    rulesImage.src = window.SPY_GO_RULES_IMAGE;
-  }
-
   aboutButton?.addEventListener("click", () => openModal(aboutModal));
   rulesButton?.addEventListener("click", () => openModal(rulesModal));
 
