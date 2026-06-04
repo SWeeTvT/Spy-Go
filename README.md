@@ -1,5 +1,5 @@
 # Spy-Go
-Minimal multiplayer Spy Go role and accusation web app
+A multiplayer web tool for Spy Go, a fun Go variant with team play, hidden spies, blind accusations, and automated result judging.
 
 ### Try it online: https://spy-go.onrender.com/
 
