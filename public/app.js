@@ -13,7 +13,6 @@ const joinTitle = document.querySelector("#joinTitle");
 const roomPreview = document.querySelector("#roomPreview");
 const nameInput = document.querySelector("#nameInput");
 const rankInput = document.querySelector("#rankInput");
-const seatInput = document.querySelector("#seatInput");
 const joinButton = document.querySelector("#joinButton");
 
 const inviteBox = document.querySelector("#inviteBox");
@@ -61,6 +60,14 @@ const PHASE_LABEL = {
 };
 
 const SEAT_ORDER = ["black1", "black2", "black3", "white1", "white2", "white3"];
+const SEAT_LABEL = {
+  black1: "黑1",
+  black2: "黑2",
+  black3: "黑3",
+  white1: "白1",
+  white2: "白2",
+  white3: "白3"
+};
 
 initRoomFromUrl();
 restorePlayerForm();
@@ -119,7 +126,6 @@ resetButton.addEventListener("click", () => {
 function submitJoin() {
   const name = nameInput.value.trim();
   const rank = rankInput.value.trim();
-  const seat = seatInput.value.trim();
 
   if (!name) {
     showToast("请输入昵称");
@@ -133,27 +139,26 @@ function submitJoin() {
     return false;
   }
 
-  if (!seat) {
-    showToast("请选择棋手座位");
-    seatInput.focus();
-    return false;
-  }
-
   localStorage.setItem("spy-go-name", name);
   localStorage.setItem("spy-go-rank", rank);
-  localStorage.setItem("spy-go-seat", seat);
 
   socket.emit("room:join", {
     roomId: joinedRoomId,
     name,
-    rank,
-    seat
+    rank
   });
 
   joinPanel.classList.add("hidden");
   gamePanel.classList.remove("hidden");
 
   return true;
+}
+
+function updateSeat(seat) {
+  socket.emit("seat:update", {
+    roomId: joinedRoomId,
+    seat
+  });
 }
 
 function initRoomFromUrl() {
@@ -225,7 +230,6 @@ function closeAllModals() {
 function restorePlayerForm() {
   const savedName = localStorage.getItem("spy-go-name");
   const savedRank = localStorage.getItem("spy-go-rank");
-  const savedSeat = localStorage.getItem("spy-go-seat");
 
   if (savedName) {
     nameInput.value = savedName;
@@ -233,10 +237,6 @@ function restorePlayerForm() {
 
   if (savedRank) {
     rankInput.value = savedRank;
-  }
-
-  if (savedSeat) {
-    seatInput.value = savedSeat;
   }
 }
 
@@ -314,16 +314,50 @@ function renderCurrentPlayer() {
   const teamText = playerState.team ? TEAM_LABEL[playerState.team] : "未分队";
   const roleText = playerState.role ? ROLE_LABEL[playerState.role] : "未发放";
   const eliminatedText = playerState.eliminated ? " · 已出局" : "";
+  const seatControls = !roomState.started ? renderSeatSelector() : "";
 
   playerInfo.innerHTML = `
     <div class="identity">
       你是：${escapeHtml(playerState.name)}
       <span class="rank-text">${escapeHtml(playerState.rank || "未填写段位")}</span>
-      <span class="rank-text">${escapeHtml(playerState.seatLabel || "未选座位")}</span>
+      <span class="rank-text">${escapeHtml(playerState.seatLabel || "未选顺序")}</span>
       <strong>${teamText} · ${roleText}${eliminatedText}</strong>
     </div>
-    <p class="hint">${playerState.isHost ? "你是房主。满 6 人且座位无误后可以开始游戏。" : "等待房主操作。"}</p>
+    ${seatControls}
+    <p class="hint">${playerState.isHost ? "你是房主。满 6 人且联棋顺序无误后可以开始游戏。" : "等待房主操作。"}</p>
     <p class="hint">刷新、掉线或退出后，重新输入相同昵称即可恢复身份。</p>
+  `;
+
+  const seatSelect = document.querySelector("#roomSeatInput");
+  if (seatSelect) {
+    seatSelect.addEventListener("change", () => {
+      updateSeat(seatSelect.value);
+    });
+  }
+}
+
+function renderSeatSelector() {
+  const options = [
+    ["", "请选择联棋顺序"],
+    ["black1", "黑1"],
+    ["black2", "黑2"],
+    ["black3", "黑3"],
+    ["white1", "白1"],
+    ["white2", "白2"],
+    ["white3", "白3"]
+  ].map(([value, label]) => {
+    const selected = playerState.seat === value ? "selected" : "";
+    return `<option value="${value}" ${selected}>${label}</option>`;
+  }).join("");
+
+  return `
+    <label class="seat-control">
+      联棋顺序
+      <select id="roomSeatInput">
+        ${options}
+      </select>
+    </label>
+    <p class="hint seat-warning">游戏开始前可随时调整联棋顺序。允许临时重复选择，开始游戏时会统一校验。</p>
   `;
 }
 
@@ -332,7 +366,7 @@ function renderPlayers() {
     <div class="player-table-head">
       <span>玩家昵称</span>
       <span>段位</span>
-      <span>棋手座位</span>
+      <span>联棋顺序</span>
       <span>分队状态</span>
       <span>房主</span>
     </div>
@@ -347,7 +381,7 @@ function renderPlayers() {
 
     node.querySelector(".player-name").textContent = player.name;
     node.querySelector(".player-rank").textContent = player.rank || "未填写段位";
-    node.querySelector(".player-seat").textContent = player.seatLabel || "未选座位";
+    node.querySelector(".player-seat").textContent = player.seatLabel || "未选顺序";
     node.querySelector(".host-mark").textContent = player.id === roomState.hostId ? "房主" : "";
 
     const teamText = player.team ? TEAM_LABEL[player.team] : "等待开始";
@@ -395,7 +429,7 @@ function renderWaitingStage() {
     <div class="notice">
       当前正在等待玩家加入。还需要 <strong>${missing}</strong> 人。
       <br />
-      请提前与其他玩家商议好棋手座位，确保 6 名玩家分别为黑1、黑2、黑3、白1、白2、白3，缺一不可且不可重复。
+      进入房间后，请在“我的身份”中选择或调整联棋顺序。开始游戏时会统一校验 6 名玩家是否分别为黑1、黑2、黑3、白1、白2、白3，缺一不可且不可重复。
     </div>
   `;
 }
@@ -480,7 +514,7 @@ function renderAccusingStage() {
           <input type="radio" name="target" value="${player.id}" />
           ${escapeHtml(player.name)}
           <span class="rank-text">${escapeHtml(player.rank || "未填写段位")}</span>
-          <span class="rank-text">${escapeHtml(player.seatLabel || "未选座位")}</span>
+          <span class="rank-text">${escapeHtml(player.seatLabel || "未选顺序")}</span>
         </label>
       </div>
     `;
@@ -596,7 +630,7 @@ function renderEndedStage() {
         <div class="result-item ${outcomeClass}">
           <div class="result-main">
             <strong>${escapeHtml(item.name)}</strong>
-            <span>${escapeHtml(item.rank || "未填写段位")} · ${escapeHtml(item.seatLabel || "未选座位")}</span>
+            <span>${escapeHtml(item.rank || "未填写段位")} · ${escapeHtml(item.seatLabel || "未选顺序")}</span>
             <span>${team} · ${role}${item.eliminated ? " · 已出局" : ""}</span>
             <b>${outcomeText}</b>
           </div>
