@@ -113,7 +113,7 @@ function publicRoomState(room) {
       name: player.name,
       rank: player.rank,
       seat: player.seat,
-      seatLabel: SEAT_LABEL[player.seat] || "未选座位",
+      seatLabel: SEAT_LABEL[player.seat] || "未选顺序",
       team: player.team,
       eliminated: Boolean(player.eliminated),
       connected: player.connected
@@ -143,7 +143,7 @@ function privatePlayerState(room, socketId) {
     name: player.name,
     rank: player.rank,
     seat: player.seat,
-    seatLabel: SEAT_LABEL[player.seat] || "未选座位",
+    seatLabel: SEAT_LABEL[player.seat] || "未选顺序",
     team: player.team,
     role: player.role,
     eliminated: Boolean(player.eliminated),
@@ -194,7 +194,6 @@ function reconnectExistingPlayer(room, player, socket, incomingData) {
 
   if (!room.started) {
     player.rank = sanitizeRank(incomingData.rank);
-    player.seat = sanitizeSeat(incomingData.seat) || player.seat;
   }
 
   emitRoom(room);
@@ -206,8 +205,9 @@ function validateSeatConfig(room) {
 
   const hasAllSeats = SEATS.every((seat) => selectedSet.has(seat));
   const hasNoDuplicate = selectedSet.size === selectedSeats.length;
+  const hasNoEmpty = selectedSeats.every((seat) => SEATS.includes(seat));
 
-  return room.players.length === 6 && hasAllSeats && hasNoDuplicate;
+  return room.players.length === 6 && hasAllSeats && hasNoDuplicate && hasNoEmpty;
 }
 
 function assignRoles(room) {
@@ -244,7 +244,7 @@ function assignRoles(room) {
   };
   room.gameLog = [];
   pushLog(room, "游戏开始：黑方 3 人，白方 3 人。");
-  pushLog(room, "座位确认：黑1、黑2、黑3、白1、白2、白3 均已就位。");
+  pushLog(room, "联棋顺序确认：黑1、黑2、黑3、白1、白2、白3 均已就位。");
   pushLog(room, `第 ${HAND_NODES[0]} 手指认节点开启。`);
 }
 
@@ -380,7 +380,7 @@ function buildPlayerResult(player, outcome, reason) {
     name: player.name,
     rank: player.rank,
     seat: player.seat,
-    seatLabel: SEAT_LABEL[player.seat] || "未选座位",
+    seatLabel: SEAT_LABEL[player.seat] || "未选顺序",
     team: player.team,
     role: player.role,
     eliminated: Boolean(player.eliminated),
@@ -500,10 +500,9 @@ function removePlayer(socket) {
 }
 
 io.on("connection", (socket) => {
-  socket.on("room:join", ({ roomId, name, rank, seat }) => {
+  socket.on("room:join", ({ roomId, name, rank }) => {
     const safeRoomId = String(roomId || "").trim().slice(0, 24);
     const safeName = sanitizeName(name);
-    const safeSeat = sanitizeSeat(seat);
 
     if (!safeRoomId) {
       socket.emit("error:message", "请输入房间号。");
@@ -514,12 +513,7 @@ io.on("connection", (socket) => {
     const existingPlayer = room.players.find((player) => player.name === safeName);
 
     if (existingPlayer) {
-      reconnectExistingPlayer(room, existingPlayer, socket, { rank, seat });
-      return;
-    }
-
-    if (!safeSeat) {
-      socket.emit("error:message", "请选择棋手座位。");
+      reconnectExistingPlayer(room, existingPlayer, socket, { rank });
       return;
     }
 
@@ -539,7 +533,7 @@ io.on("connection", (socket) => {
       id: socket.id,
       name: safeName,
       rank: sanitizeRank(rank),
-      seat: safeSeat,
+      seat: "",
       team: null,
       role: null,
       eliminated: false,
@@ -552,6 +546,22 @@ io.on("connection", (socket) => {
       room.hostId = socket.id;
     }
 
+    emitRoom(room);
+  });
+
+  socket.on("seat:update", ({ roomId, seat }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+
+    if (room.started) {
+      socket.emit("error:message", "游戏已经开始，不能再修改联棋顺序。");
+      return;
+    }
+
+    const player = room.players.find((item) => item.id === socket.id);
+    if (!player) return;
+
+    player.seat = sanitizeSeat(seat);
     emitRoom(room);
   });
 
@@ -570,7 +580,7 @@ io.on("connection", (socket) => {
     }
 
     if (!validateSeatConfig(room)) {
-      socket.emit("error:message", "棋手座位有误，无法开始游戏。请确认 6 名玩家分别为黑1、黑2、黑3、白1、白2、白3，且不可重复。");
+      socket.emit("error:message", "联棋顺序有误，无法开始游戏。请确认 6 名玩家分别为黑1、黑2、黑3、白1、白2、白3，且不可重复。");
       return;
     }
 
@@ -663,6 +673,7 @@ io.on("connection", (socket) => {
       player.team = null;
       player.role = null;
       player.eliminated = false;
+      player.seat = "";
     }
 
     room.started = false;
