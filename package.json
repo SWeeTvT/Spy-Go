@@ -4,7 +4,9 @@
   "description": "Minimal multiplayer Spy Go role and accusation web app",
   "main": "server.js",
   "scripts": {
+    "prestart": "node -e \"const fs=require('fs');const path=require('path');const src=path.join(__dirname,'Rules.png');const dst=path.join(__dirname,'public','Rules.png');if(fs.existsSync(src)){fs.copyFileSync(src,dst);}\"",
     "start": "node server.js",
+    "predev": "node -e \"const fs=require('fs');const path=require('path');const src=path.join(__dirname,'Rules.png');const dst=path.join(__dirname,'public','Rules.png');if(fs.existsSync(src)){fs.copyFileSync(src,dst);}\"",
     "dev": "node server.js"
   },
   "dependencies": {
