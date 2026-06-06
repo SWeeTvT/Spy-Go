@@ -561,21 +561,17 @@ function renderAccusingStage() {
 }
 
 function renderFinalAiStage() {
-  const finalReason = roomState.finalAiReason || "第 150 手结束，无人成功指认。";
-  const blackBonus = roomState.finalWinRateBonus?.black || 0;
-  const whiteBonus = roomState.finalWinRateBonus?.white || 0;
-  const bonusText = blackBonus || whiteBonus
-    ? `终局奖励修正：黑方 ${formatBonus(blackBonus)}，白方 ${formatBonus(whiteBonus)}。`
-    : "终局奖励修正：无。";
+  const finalReason = formatDisplayText(roomState.finalAiReason || "第 150 手结束，无人成功指认。");
+  const rewardText = getFinalRewardText();
 
   if (!playerState.isHost) {
     stageBox.innerHTML = `
       <div class="notice">
         ${escapeHtml(finalReason)}
         <br />
-        ${escapeHtml(bonusText)}
+        ${escapeHtml(rewardText)}
         <br />
-        等待房主提交调整后 AI 胜率更高的一方。
+        等待房主提交终局 AI 胜率更高的一方。
       </div>
     `;
     return;
@@ -585,14 +581,14 @@ function renderFinalAiStage() {
     <div class="notice">
       ${escapeHtml(finalReason)}
       <br />
-      ${escapeHtml(bonusText)}
+      ${escapeHtml(rewardText)}
       <br />
-      请房主按奖励修正后的结果，选择 AI 胜率更高的一方。
+      请房主按双方商议的奖励形式，选择终局 AI 胜率更高的一方。
     </div>
 
     <div class="choice-grid">
-      <button id="blackAiButton">黑方调整后 AI 胜率更高</button>
-      <button id="whiteAiButton">白方调整后 AI 胜率更高</button>
+      <button id="blackAiButton">黑方终局 AI 胜率更高</button>
+      <button id="whiteAiButton">白方终局 AI 胜率更高</button>
     </div>
   `;
 
@@ -639,12 +635,13 @@ function renderEndedStage() {
       `;
     }).join("");
 
-    const bonus = result.bonus
-      ? `<p class="hint">终局奖励修正：黑方 ${formatBonus(result.bonus.black || 0)}，白方 ${formatBonus(result.bonus.white || 0)}。</p>`
+    const rewardText = getFinalRewardText();
+    const bonus = rewardText !== "终局指认奖励：无。"
+      ? `<p class="hint">${escapeHtml(rewardText)}</p>`
       : "";
 
     stageBox.innerHTML = `
-      <div class="notice"><strong>${escapeHtml(result.summary || "游戏结束。")}</strong></div>
+      <div class="notice"><strong>${escapeHtml(formatDisplayText(result.summary || "游戏结束。"))}</strong></div>
       ${bonus}
       <div class="result-box">
         ${items}
@@ -666,12 +663,59 @@ function renderLog() {
     .slice()
     .reverse()
     .map((item) => {
-      const text = typeof item === "string" ? item : item.text;
+      const rawText = typeof item === "string" ? item : item.text;
+      const text = formatDisplayText(rawText);
       const type = typeof item === "string" ? "normal" : item.type || "normal";
       const className = type === "result" ? "log-item result-log" : "log-item";
       return `<div class="${className}">${escapeHtml(text)}</div>`;
     })
     .join("");
+}
+
+function getFinalRewardText() {
+  const teams = getFinalRewardTeams();
+
+  if (teams.length === 0) {
+    return "终局指认奖励：无。";
+  }
+
+  const segments = teams.map((team) => {
+    const label = TEAM_LABEL[team] || team;
+    return `${label}指认成功，${label} +7.5 目`;
+  });
+
+  return `终局指认奖励：${segments.join("；")}（具体奖励数值与形式可由玩家自行调整）。`;
+}
+
+function getFinalRewardTeams() {
+  const logs = roomState?.gameLog || [];
+  const teams = [];
+
+  for (const item of logs) {
+    const text = typeof item === "string" ? item : item.text || "";
+    const match = text.match(/150\s*手终局指认奖励：(黑方|白方)指认成功/);
+
+    if (!match) continue;
+
+    const team = match[1] === "黑方" ? "black" : "white";
+    if (!teams.includes(team)) {
+      teams.push(team);
+    }
+  }
+
+  return teams;
+}
+
+function formatDisplayText(value) {
+  return String(value || "")
+    .replace(
+      /150\s*手终局指认奖励：(黑方|白方)指认成功，\1 AI 胜率 \+10，(黑方|白方) AI 胜率 -10。/g,
+      (_match, team) => `150 手终局指认奖励：${team}指认成功，${team} +7.5 目（具体奖励数值与形式可由玩家自行调整）。`
+    )
+    .replace(
+      /终局奖励修正：黑方 [+-]?\d+，白方 [+-]?\d+。/g,
+      getFinalRewardText()
+    );
 }
 
 function formatBonus(value) {
