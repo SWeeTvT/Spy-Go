@@ -172,6 +172,17 @@
     </section>
   </div>
 
+  <div class="modal hidden" id="resultModal" aria-hidden="true">
+    <div class="modal-backdrop result-backdrop"></div>
+    <section class="modal-card small-modal result-modal-card" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+      <div class="modal-head">
+        <h2 id="resultTitle">本轮指认结果</h2>
+      </div>
+      <div id="resultContent" class="result-modal-content"></div>
+      <button id="resultConfirmButton" type="button">确认，继续</button>
+    </section>
+  </div>
+
   <div class="toast hidden" id="toast"></div>
 
   <script src="/socket.io/socket.io.js"></script>
