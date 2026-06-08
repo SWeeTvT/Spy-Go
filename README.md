@@ -5,7 +5,7 @@ A multiplayer web tool for Spy Go, a fun Go variant with team play, hidden spies
 
 ## Try it online: https://spy-go.onrender.com
 
-### 使用说明
+## 使用说明
 1、本工具仅用于多人在线同时自动分配身份、系统判决指认结果，无法提供在线对弈以及围棋AI功能。请玩家自行通过其他对弈平台进行对局。
 
 2、本工具的核心功能在于分配身份、指认判决，其他村规均可自定（例如指认的奖惩制度、指认时机、终局步数、终局胜负判定规则等）。
@@ -17,7 +17,12 @@ A multiplayer web tool for Spy Go, a fun Go variant with team play, hidden spies
 5、游玩过程中请尊重他人，尊重规则，不恶意破坏游戏进程。例如忠臣尽量有把握时再进行指认；内鬼出局后请自觉用高算力AI代下；内鬼切忌明显故意走恶棋，如填眼、走死亡线等（因为这一定会导致你被指认出局并第一个输掉游戏，没有任何收益）。
 如果有BUG或其他建议，欢迎随时在B站或Github向作者留言~
 
-### Rules
+## Rules
 <p align="center">
 <img src="./Rules.png" alt="Rules" width="1000">
+</p>
+
+## Advanced Rules
+<p align="center">
+<img src="./Advanced Rules.png" alt="Rules" width="1000">
 </p>
