@@ -1,0 +1,39 @@
+.result-modal-card {
+  width: min(520px, 92vw);
+  border: 2px solid rgba(179, 38, 30, 0.22);
+}
+
+.result-modal-content {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.result-modal-line {
+  border-left: 4px solid var(--danger);
+  border-radius: 12px;
+  background: var(--danger-soft);
+  color: #68130f;
+  padding: 0.75rem 0.9rem;
+  font-weight: 900;
+  line-height: 1.75;
+}
+
+#resultConfirmButton {
+  width: 100%;
+}
+
+.result-backdrop {
+  background: rgba(0, 0, 0, 0.52);
+}
+
+@media (max-width: 760px) {
+  .result-modal-card {
+    width: 100%;
+    margin-top: 12vh;
+  }
+
+  .result-modal-line {
+    font-size: 0.98rem;
+  }
+}
