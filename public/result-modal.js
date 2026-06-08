@@ -9,6 +9,7 @@
   const seenKeys = new Set(loadSeenKeys());
   let initialized = false;
   let isOpen = false;
+  let collectTimer = null;
   const queue = [];
 
   window.setTimeout(() => {
@@ -22,6 +23,24 @@
       return;
     }
 
+    window.clearTimeout(collectTimer);
+    collectTimer = window.setTimeout(collectNewResults, 180);
+  });
+
+  observer.observe(logBox, {
+    childList: true,
+    subtree: true
+  });
+
+  confirmButton.addEventListener("click", () => {
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("modal-open");
+    isOpen = false;
+    showNextResultModal();
+  });
+
+  function collectNewResults() {
     const newResults = getCurrentResultTexts()
       .filter((text) => isAccusationResultText(text))
       .filter((text) => {
@@ -37,22 +56,12 @@
     }
 
     saveSeenKeys();
+
+    // 日志区是倒序显示的，所以弹窗内反转为正常发生顺序；
+    // 同一轮短时间内产生的多条结果合并到同一个弹窗，避免只显示其中一条。
     queue.push(newResults.reverse());
     showNextResultModal();
-  });
-
-  observer.observe(logBox, {
-    childList: true,
-    subtree: true
-  });
-
-  confirmButton.addEventListener("click", () => {
-    modal.classList.add("hidden");
-    modal.setAttribute("aria-hidden", "true");
-    document.body.classList.remove("modal-open");
-    isOpen = false;
-    showNextResultModal();
-  });
+  }
 
   function showNextResultModal() {
     if (isOpen || queue.length === 0) return;
@@ -108,7 +117,7 @@
 
   function saveSeenKeys() {
     try {
-      sessionStorage.setItem("spy-go-seen-result-logs", JSON.stringify(Array.from(seenKeys).slice(-120)));
+      sessionStorage.setItem("spy-go-seen-result-logs", JSON.stringify(Array.from(seenKeys).slice(-160)));
     } catch {
       // 忽略浏览器存储异常，不影响游戏流程。
     }
