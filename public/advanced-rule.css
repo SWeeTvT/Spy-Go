@@ -1,0 +1,21 @@
+.advanced-rule-control {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  border-left: 4px solid var(--green);
+  border-radius: 12px;
+  background: var(--green-soft);
+  color: var(--green);
+  padding: 0.75rem 0.85rem;
+  font-weight: 900;
+}
+
+.advanced-rule-control input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--green);
+}
+
+.advanced-rule-control input:disabled {
+  cursor: not-allowed;
+}
