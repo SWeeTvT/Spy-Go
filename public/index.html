@@ -16,6 +16,7 @@
         <p class="subtitle">点开即用的 6 人内鬼模式身份与指认工具。</p>
         <div class="utility-actions">
           <button id="rulesButton" class="text-button" type="button">查看详细规则</button>
+          <button id="advancedRulesButton" class="text-button" type="button">查看进阶规则</button>
           <button id="notesButton" class="text-button" type="button">使用说明</button>
           <button id="aboutButton" class="text-button subtle" type="button">作者信息</button>
         </div>
@@ -169,6 +170,19 @@
       </div>
       <div class="rules-image-wrap">
         <img id="rulesImage" src="./Rules.png" alt="Spy Go 内鬼模式详细规则图" loading="eager" decoding="async" />
+      </div>
+    </section>
+  </div>
+
+  <div class="modal hidden" id="advancedRulesModal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal></div>
+    <section class="modal-card rules-modal" role="dialog" aria-modal="true" aria-labelledby="advancedRulesTitle">
+      <div class="modal-head">
+        <h2 id="advancedRulesTitle">进阶规则</h2>
+        <button class="icon-button" type="button" data-close-modal>×</button>
+      </div>
+      <div class="rules-image-wrap">
+        <img id="advancedRulesImage" src="./Advanced%20Rules.png" alt="Spy Go 内鬼模式进阶规则图" loading="eager" decoding="async" />
       </div>
     </section>
   </div>
