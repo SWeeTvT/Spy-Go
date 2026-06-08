@@ -143,6 +143,7 @@ function privatePlayerState(room, socketId) {
     team: player.team,
     role: player.role,
     eliminated: Boolean(player.eliminated),
+    spyAccusationUsed: Boolean(player.spyAccusationUsed),
     isHost: room.hostId === socketId
   };
 }
@@ -195,6 +196,7 @@ function assignRoles(room) {
     player.team = getSeatTeam(player.seat);
     player.role = "loyalist";
     player.eliminated = false;
+    player.spyAccusationUsed = false;
   });
 
   const blackPlayers = room.players.filter((player) => player.team === "black");
@@ -223,8 +225,9 @@ function getRequiredAccusers(room) {
     if (!player.team || player.eliminated) return false;
     const ownSpy = getSpyInTeam(room, player.team);
     if (player.role === "loyalist") return Boolean(ownSpy);
+
     const opponentSpy = getSpyInTeam(room, otherTeam(player.team));
-    return room.advancedSpyAccusation ? Boolean(opponentSpy) : Boolean(ownSpy);
+    return room.advancedSpyAccusation && !player.spyAccusationUsed && Boolean(opponentSpy);
   });
 }
 
@@ -243,25 +246,6 @@ function addBonus(room, team, points, reason) {
   if (!points) return;
   room.finalWinRateBonus[team] += points;
   pushLog(room, `${reason}：${teamName(team)} +${points} 目（具体奖励数值与形式可由玩家自行调整）。`, "result");
-}
-
-function applyBasicFinalReward(room, teams) {
-  if (HAND_NODES[room.currentNodeIndex] !== 150) return;
-  for (const team of teams) addBonus(room, team, 7.5, `150 手终局指认奖励`);
-}
-
-function applyNonEndingEliminationRewards(room, eliminatedTeams, doubleFailTeams) {
-  const currentHand = HAND_NODES[room.currentNodeIndex];
-  for (const team of eliminatedTeams) {
-    if (currentHand === 150) {
-      addBonus(room, team, 7.5, `150 手内鬼出局奖励`);
-    } else {
-      pushLog(room, `${teamName(team)}内鬼出局，${teamName(team)}忠臣获得一份奖励：由 AI 接管出局内鬼位置。`, "result");
-    }
-  }
-  for (const team of doubleFailTeams) {
-    addBonus(room, team, 7.5, `${teamName(team)}内鬼博弈双重失败额外奖励`);
-  }
 }
 
 function advanceAccusationNode(room) {
@@ -293,42 +277,48 @@ function evaluateSpyAccusation(room, team) {
   const spy = getSpyInTeam(room, team);
   const opponent = otherTeam(team);
   const opponentSpy = getSpyInTeam(room, opponent);
-  if (!room.advancedSpyAccusation || !spy || !opponentSpy) return { team, status: "resolved" };
+  if (!room.advancedSpyAccusation || !spy || !opponentSpy || spy.spyAccusationUsed) {
+    return { team, status: "resolved" };
+  }
+
   const vote = room.accusations[spy.id];
-  if (vote === "abstain") return { team, status: "no_action" };
-  if (vote === opponentSpy.id) return { team, status: "spy_found", targetTeam: opponent, targetSpyId: opponentSpy.id };
-  return { team, status: "spy_failed", spyId: spy.id };
+  if (vote === "abstain") return { team, status: "no_action", spyId: spy.id };
+  if (!vote) return { team, status: "pending", spyId: spy.id };
+  if (vote === opponentSpy.id) return { team, status: "correct", spyId: spy.id, rewardTeam: opponent };
+  return { team, status: "wrong", spyId: spy.id, rewardTeam: team };
 }
 
-function buildFlags(room, teamResults, spyResults) {
+function buildAccusationFlags(teamResults) {
   const loyalistSuccess = { black: false, white: false };
   const loyalistFailed = { black: false, white: false };
-  const spyFoundByOpponentSpy = { black: false, white: false };
-  const spyAccusationFailed = { black: false, white: false };
 
   for (const item of teamResults) {
     if (item.status === "spy_found") loyalistSuccess[item.team] = true;
     if (item.status === "loyalists_failed") loyalistFailed[item.team] = true;
   }
-  for (const item of spyResults) {
-    if (item.status === "spy_found") spyFoundByOpponentSpy[item.targetTeam] = true;
-    if (item.status === "spy_failed") spyAccusationFailed[item.team] = true;
+
+  return { loyalistSuccess, loyalistFailed };
+}
+
+function applyAccusationRewards(room, rewardCounts, eliminatedTeams) {
+  const currentHand = HAND_NODES[room.currentNodeIndex];
+  for (const team of TEAMS) {
+    const count = rewardCounts[team] || 0;
+    if (count <= 0) continue;
+
+    const eliminated = eliminatedTeams.includes(team);
+    if (currentHand === 150) {
+      addBonus(room, team, count * 7.5, `150 手指认奖励（${count} 份）`);
+      continue;
+    }
+
+    if (eliminated) {
+      pushLog(room, `${teamName(team)}内鬼出局，${teamName(team)}忠臣获得一份奖励：由 AI 接管出局内鬼位置。`, "result");
+      if (count > 1) addBonus(room, team, (count - 1) * 7.5, `${teamName(team)}额外奖励（${count - 1} 份）`);
+    } else {
+      addBonus(room, team, count * 7.5, `${teamName(team)}内鬼指认奖励（${count} 份）`);
+    }
   }
-
-  const spyFail = {
-    black: loyalistSuccess.black || spyFoundByOpponentSpy.black || spyAccusationFailed.black,
-    white: loyalistSuccess.white || spyFoundByOpponentSpy.white || spyAccusationFailed.white
-  };
-  const doubleFail = {
-    black: spyFoundByOpponentSpy.black && spyAccusationFailed.black,
-    white: spyFoundByOpponentSpy.white && spyAccusationFailed.white
-  };
-  const special = {
-    black: loyalistSuccess.black && (spyFoundByOpponentSpy.black || spyAccusationFailed.black),
-    white: loyalistSuccess.white && (spyFoundByOpponentSpy.white || spyAccusationFailed.white)
-  };
-
-  return { loyalistSuccess, loyalistFailed, spyFoundByOpponentSpy, spyAccusationFailed, spyFail, doubleFail, special };
 }
 
 function evaluateAccusationNode(room) {
@@ -337,7 +327,7 @@ function evaluateAccusationNode(room) {
   const currentHand = HAND_NODES[room.currentNodeIndex];
   const teamResults = TEAMS.map((team) => evaluateTeamAccusation(room, team));
   const spyResults = TEAMS.map((team) => evaluateSpyAccusation(room, team));
-  const flags = buildFlags(room, teamResults, spyResults);
+  const flags = buildAccusationFlags(teamResults);
 
   for (const team of TEAMS) {
     if (flags.loyalistSuccess[team]) {
@@ -346,37 +336,44 @@ function evaluateAccusationNode(room) {
     if (flags.loyalistFailed[team]) {
       pushLog(room, `第 ${currentHand} 手：${teamName(team)}忠臣指认失败，${teamName(team)}忠臣判负。`, "result");
     }
-    if (flags.spyFoundByOpponentSpy[team]) {
-      pushLog(room, `第 ${currentHand} 手：${teamName(otherTeam(team))}内鬼指认成功，${teamName(team)}内鬼出局。`, "result");
-    }
-    if (flags.spyAccusationFailed[team]) {
-      pushLog(room, `第 ${currentHand} 手：${teamName(team)}内鬼指认失败，${teamName(team)}内鬼出局。`, "result");
-    }
-    if (flags.doubleFail[team]) {
-      pushLog(room, `第 ${currentHand} 手：${teamName(team)}内鬼同时自己指错且被对方内鬼指对，触发内鬼博弈双重失败。`, "result");
-    }
-    if (flags.special[team]) {
-      pushLog(room, `第 ${currentHand} 手：${teamName(team)}内鬼同时被己方忠臣正确指出并在内鬼博弈中失败，触发特殊双重抓出。`, "result");
+  }
+
+  const rewardCounts = { black: 0, white: 0 };
+  for (const team of TEAMS) {
+    if (flags.loyalistSuccess[team]) rewardCounts[team] += 1;
+  }
+
+  for (const item of spyResults) {
+    if (item.status !== "correct" && item.status !== "wrong") continue;
+    const spy = room.players.find((player) => player.id === item.spyId);
+    if (spy) spy.spyAccusationUsed = true;
+    rewardCounts[item.rewardTeam] += 1;
+
+    if (item.status === "correct") {
+      pushLog(room, `第 ${currentHand} 手：${teamName(item.team)}内鬼指认正确，${teamName(item.rewardTeam)}忠臣获得一份奖励。`, "result");
+    } else {
+      pushLog(room, `第 ${currentHand} 手：${teamName(item.team)}内鬼指认错误，${teamName(item.rewardTeam)}忠臣获得一份奖励。`, "result");
     }
   }
 
-  const earlyEnd = flags.loyalistFailed.black || flags.loyalistFailed.white || flags.special.black || flags.special.white;
+  const earlyEnd = flags.loyalistFailed.black || flags.loyalistFailed.white;
   if (earlyEnd) {
     room.phase = "ended";
-    room.finalResult = buildAdvancedAccusationFinalResult(room, flags);
+    room.finalResult = buildAccusationFinalResult(room, flags);
     room.accusations = {};
     return;
   }
 
-  const eliminatedTeams = TEAMS.filter((team) => flags.spyFail[team]);
+  const eliminatedTeams = TEAMS.filter((team) => flags.loyalistSuccess[team]);
   for (const team of eliminatedTeams) {
     const spy = getSpyInTeam(room, team);
     if (spy) spy.eliminated = true;
   }
 
-  applyNonEndingEliminationRewards(room, eliminatedTeams, TEAMS.filter((team) => flags.doubleFail[team]));
+  applyAccusationRewards(room, rewardCounts, eliminatedTeams);
 
-  if (eliminatedTeams.length === 0) {
+  const hasReward = TEAMS.some((team) => rewardCounts[team] > 0);
+  if (!hasReward) {
     pushLog(room, `第 ${currentHand} 手：未出现指认失败或成功抓出内鬼，棋局继续。`, "result");
   }
 
@@ -398,34 +395,26 @@ function buildPlayerResult(player, outcome, reason) {
   };
 }
 
-function buildAdvancedAccusationFinalResult(room, flags) {
-  const bothSpecial = flags.special.black && flags.special.white;
+function buildAccusationFinalResult(room, flags) {
   const players = room.players.map((player) => {
     const team = player.team;
     const label = teamName(team);
 
-    if (bothSpecial) {
-      if (player.role === "spy") return buildPlayerResult(player, "lose", `${label}内鬼触发特殊双重抓出，内鬼失败。`);
-      return buildPlayerResult(player, "win", "黑白双方同时触发特殊双重抓出，只惩罚两个内鬼，双方忠臣均获胜。");
-    }
-
-    const loyalistFail = flags.loyalistFailed[team] || flags.special[otherTeam(team)];
-    const spyFail = flags.spyFail[team];
-
     if (player.role === "spy") {
-      if (spyFail) return buildPlayerResult(player, "lose", `${label}内鬼满足失败或出局条件，按失败优先原则判负。`);
+      if (flags.loyalistSuccess[team]) return buildPlayerResult(player, "lose", `${label}内鬼被本方忠臣成功指认，判负。`);
       return buildPlayerResult(player, "win", `${label}内鬼未满足失败条件，获得胜利。`);
     }
 
-    if (loyalistFail) return buildPlayerResult(player, "lose", `${label}忠臣满足失败条件，判负。`);
+    if (flags.loyalistFailed[team]) return buildPlayerResult(player, "lose", `${label}忠臣指认失败，判负。`);
     return buildPlayerResult(player, "win", `${label}忠臣未满足失败条件，获得胜利。`);
   });
 
-  const summary = bothSpecial
-    ? "黑白双方同时触发特殊双重抓出，两个内鬼失败，双方忠臣获胜。"
-    : "本轮触发提前结算：按失败/出局条件优先原则判定每名玩家胜负。";
-
-  return { type: "accusation", players, summary, bonus: room.finalWinRateBonus };
+  return {
+    type: "accusation",
+    players,
+    bonus: room.finalWinRateBonus,
+    summary: "本轮有忠臣指认失败，游戏提前结束；内鬼指认奖励不再额外结算。"
+  };
 }
 
 function buildAiFinalResult(room, winnerTeam) {
@@ -486,7 +475,7 @@ io.on("connection", (socket) => {
     if (room.players.length >= 6) return socket.emit("error:message", "房间已满，最多 6 人。");
 
     socket.join(room.id);
-    const player = { id: socket.id, name: safeName, rank: sanitizeRank(rank), seat: "", team: null, role: null, eliminated: false, connected: true };
+    const player = { id: socket.id, name: safeName, rank: sanitizeRank(rank), seat: "", team: null, role: null, eliminated: false, connected: true, spyAccusationUsed: false };
     room.players.push(player);
     if (!room.hostId) room.hostId = socket.id;
     emitRoom(room);
@@ -542,6 +531,7 @@ io.on("connection", (socket) => {
 
     if (player.role === "spy") {
       if (!room.advancedSpyAccusation) return socket.emit("error:message", "未开启内鬼指认，内鬼请选择不指认。");
+      if (player.spyAccusationUsed) return socket.emit("error:message", "你已经使用过内鬼指认机会。");
       if (!getSpyInTeam(room, otherTeam(player.team))) return socket.emit("error:message", "对方内鬼已找出，本轮内鬼指认无需操作。");
       if (target.team === player.team) return socket.emit("error:message", "内鬼只能在对方三人中指认。");
     } else {
@@ -574,6 +564,7 @@ io.on("connection", (socket) => {
       player.role = null;
       player.eliminated = false;
       player.seat = "";
+      player.spyAccusationUsed = false;
     }
     room.started = false;
     room.phase = "waiting";
