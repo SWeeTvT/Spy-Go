@@ -34,9 +34,11 @@ const resetButton = document.querySelector("#resetButton");
 const aboutButton = document.querySelector("#aboutButton");
 const notesButton = document.querySelector("#notesButton");
 const rulesButton = document.querySelector("#rulesButton");
+const advancedRulesButton = document.querySelector("#advancedRulesButton");
 const aboutModal = document.querySelector("#aboutModal");
 const notesModal = document.querySelector("#notesModal");
 const rulesModal = document.querySelector("#rulesModal");
+const advancedRulesModal = document.querySelector("#advancedRulesModal");
 const notesContent = document.querySelector("#notesContent");
 const toast = document.querySelector("#toast");
 
@@ -161,6 +163,13 @@ function updateSeat(seat) {
   });
 }
 
+function updateAdvancedRule(enabled) {
+  socket.emit("advanced-rule:update", {
+    roomId: joinedRoomId,
+    enabled
+  });
+}
+
 function initRoomFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const roomFromUrl = params.get("room");
@@ -181,6 +190,7 @@ function initRoomFromUrl() {
 function initModalActions() {
   aboutButton?.addEventListener("click", () => openModal(aboutModal));
   rulesButton?.addEventListener("click", () => openModal(rulesModal));
+  advancedRulesButton?.addEventListener("click", () => openModal(advancedRulesModal));
   notesButton?.addEventListener("click", () => {
     openModal(notesModal);
     loadNotesContent();
@@ -219,7 +229,7 @@ function openModal(modal) {
 }
 
 function closeAllModals() {
-  [aboutModal, notesModal, rulesModal].forEach((modal) => {
+  [aboutModal, notesModal, rulesModal, advancedRulesModal].forEach((modal) => {
     if (!modal) return;
     modal.classList.add("hidden");
     modal.setAttribute("aria-hidden", "true");
@@ -315,6 +325,7 @@ function renderCurrentPlayer() {
   const roleText = playerState.role ? ROLE_LABEL[playerState.role] : "未发放";
   const eliminatedText = playerState.eliminated ? " · 已出局" : "";
   const seatControls = !roomState.started ? renderSeatSelector() : "";
+  const advancedControls = !roomState.started ? renderAdvancedRuleControl() : renderAdvancedRuleStatus();
 
   playerInfo.innerHTML = `
     <div class="identity">
@@ -324,6 +335,7 @@ function renderCurrentPlayer() {
       <strong>${teamText} · ${roleText}${eliminatedText}</strong>
     </div>
     ${seatControls}
+    ${advancedControls}
     <p class="hint">${playerState.isHost ? "你是房主。满 6 人且联棋顺序无误后可以开始游戏。" : "等待房主操作。"}</p>
     <p class="hint">刷新、掉线或退出后，重新输入相同昵称即可恢复身份。</p>
   `;
@@ -332,6 +344,13 @@ function renderCurrentPlayer() {
   if (seatSelect) {
     seatSelect.addEventListener("change", () => {
       updateSeat(seatSelect.value);
+    });
+  }
+
+  const advancedInput = document.querySelector("#advancedSpyInput");
+  if (advancedInput) {
+    advancedInput.addEventListener("change", () => {
+      updateAdvancedRule(advancedInput.checked);
     });
   }
 }
@@ -359,6 +378,23 @@ function renderSeatSelector() {
     </label>
     <p class="hint seat-warning">游戏开始前可随时调整联棋顺序。允许临时重复选择，开始游戏时会统一校验。</p>
   `;
+}
+
+function renderAdvancedRuleControl() {
+  const checked = roomState.advancedSpyAccusation ? "checked" : "";
+  const disabled = playerState?.isHost ? "" : "disabled";
+
+  return `
+    <label class="advanced-rule-control">
+      <input id="advancedSpyInput" type="checkbox" ${checked} ${disabled} />
+      <span>进阶规则：内鬼指认</span>
+    </label>
+    <p class="hint">${playerState?.isHost ? "仅房主可修改，默认开启。" : "仅房主可修改，其他玩家可见。"}</p>
+  `;
+}
+
+function renderAdvancedRuleStatus() {
+  return `<p class="hint">进阶规则：内鬼指认${roomState.advancedSpyAccusation ? "已开启" : "未开启"}。</p>`;
 }
 
 function renderPlayers() {
@@ -461,7 +497,23 @@ function renderAccusingStage() {
     return;
   }
 
-  if (teamSpyFound) {
+  const opponentTeam = playerState.team === "black" ? "white" : "black";
+  const opponentSpyFound = playerState.team === "black"
+    ? roomState.teamStatus?.whiteSpyFound
+    : roomState.teamStatus?.blackSpyFound;
+
+  if (playerState.role === "spy" && roomState.advancedSpyAccusation && opponentSpyFound) {
+    stageBox.innerHTML = `
+      <div class="notice">
+        第 <strong>${currentHand}</strong> 手指认节点。
+        <br />
+        ${TEAM_LABEL[opponentTeam]}内鬼已找出，本轮内鬼指认无需操作。
+      </div>
+    `;
+    return;
+  }
+
+  if (playerState.role !== "spy" && teamSpyFound) {
     stageBox.innerHTML = `
       <div class="notice">
         第 <strong>${currentHand}</strong> 手指认节点。
@@ -484,22 +536,53 @@ function renderAccusingStage() {
   }
 
   if (playerState.role === "spy") {
+    if (!roomState.advancedSpyAccusation) {
+      stageBox.innerHTML = `
+        <div class="notice">
+          第 <strong>${currentHand}</strong> 手指认节点。
+          <br />
+          你是内鬼，未开启“内鬼指认”，本环节无需指认，请选择不指认。
+        </div>
+        <button id="abstainButton">不指认</button>
+      `;
+      document.querySelector("#abstainButton").addEventListener("click", submitAbstain);
+      return;
+    }
+
+    const opponents = roomState.players.filter((player) => {
+      return player.team === opponentTeam && !player.eliminated;
+    });
+
+    const options = opponents.map((player) => {
+      return `
+        <div class="choice-card">
+          <label>
+            <input type="radio" name="target" value="${player.id}" />
+            ${escapeHtml(player.name)}
+            <span class="rank-text">${escapeHtml(player.rank || "未填写段位")}</span>
+            <span class="rank-text">${escapeHtml(player.seatLabel || "未选顺序")}</span>
+          </label>
+        </div>
+      `;
+    }).join("");
+
     stageBox.innerHTML = `
       <div class="notice">
         第 <strong>${currentHand}</strong> 手指认节点。
         <br />
-        你是内鬼，本环节无需指认，请选择不指认。
+        你是内鬼，可以在${TEAM_LABEL[opponentTeam]}三人中指认 1 人，也可以选择不指认。
       </div>
-      <button id="abstainButton">不指认</button>
+      <div class="choice-grid">
+        ${options}
+      </div>
+      <div class="choice-grid">
+        <button id="submitAccusationButton">提交内鬼指认</button>
+        <button id="abstainButton" class="secondary">不指认</button>
+      </div>
     `;
 
-    document.querySelector("#abstainButton").addEventListener("click", () => {
-      socket.emit("accusation:submit", {
-        roomId: joinedRoomId,
-        abstain: true
-      });
-    });
-
+    document.querySelector("#submitAccusationButton").addEventListener("click", submitSelectedAccusation);
+    document.querySelector("#abstainButton").addEventListener("click", submitAbstain);
     return;
   }
 
@@ -537,26 +620,29 @@ function renderAccusingStage() {
     </div>
   `;
 
-  document.querySelector("#submitAccusationButton").addEventListener("click", () => {
-    const selected = document.querySelector('input[name="target"]:checked');
+  document.querySelector("#submitAccusationButton").addEventListener("click", submitSelectedAccusation);
+  document.querySelector("#abstainButton").addEventListener("click", submitAbstain);
+}
 
-    if (!selected) {
-      showToast("请选择一名本队玩家，或选择不指认");
-      return;
-    }
+function submitSelectedAccusation() {
+  const selected = document.querySelector('input[name="target"]:checked');
 
-    socket.emit("accusation:submit", {
-      roomId: joinedRoomId,
-      targetId: selected.value,
-      abstain: false
-    });
+  if (!selected) {
+    showToast("请选择一名玩家，或选择不指认");
+    return;
+  }
+
+  socket.emit("accusation:submit", {
+    roomId: joinedRoomId,
+    targetId: selected.value,
+    abstain: false
   });
+}
 
-  document.querySelector("#abstainButton").addEventListener("click", () => {
-    socket.emit("accusation:submit", {
-      roomId: joinedRoomId,
-      abstain: true
-    });
+function submitAbstain() {
+  socket.emit("accusation:submit", {
+    roomId: joinedRoomId,
+    abstain: true
   });
 }
 
@@ -636,7 +722,7 @@ function renderEndedStage() {
     }).join("");
 
     const rewardText = getFinalRewardText();
-    const bonus = rewardText !== "终局指认奖励：无。"
+    const bonus = rewardText !== "终局奖励：无。"
       ? `<p class="hint">${escapeHtml(rewardText)}</p>`
       : "";
 
@@ -673,37 +759,22 @@ function renderLog() {
 }
 
 function getFinalRewardText() {
-  const teams = getFinalRewardTeams();
+  const bonus = roomState?.finalWinRateBonus || { black: 0, white: 0 };
+  const parts = [];
 
-  if (teams.length === 0) {
-    return "终局指认奖励：无。";
+  if (bonus.black) {
+    parts.push(`黑方 ${formatBonus(bonus.black)} 目`);
   }
 
-  const segments = teams.map((team) => {
-    const label = TEAM_LABEL[team] || team;
-    return `${label}指认成功，${label} +7.5 目`;
-  });
-
-  return `终局指认奖励：${segments.join("；")}（具体奖励数值与形式可由玩家自行调整）。`;
-}
-
-function getFinalRewardTeams() {
-  const logs = roomState?.gameLog || [];
-  const teams = [];
-
-  for (const item of logs) {
-    const text = typeof item === "string" ? item : item.text || "";
-    const match = text.match(/150\s*手终局指认奖励：(黑方|白方)指认成功/);
-
-    if (!match) continue;
-
-    const team = match[1] === "黑方" ? "black" : "white";
-    if (!teams.includes(team)) {
-      teams.push(team);
-    }
+  if (bonus.white) {
+    parts.push(`白方 ${formatBonus(bonus.white)} 目`);
   }
 
-  return teams;
+  if (parts.length === 0) {
+    return "终局奖励：无。";
+  }
+
+  return `终局奖励：${parts.join("；")}（具体奖励数值与形式可由玩家自行调整）。`;
 }
 
 function formatDisplayText(value) {
