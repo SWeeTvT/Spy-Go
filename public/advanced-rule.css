@@ -1,21 +1,85 @@
 .advanced-rule-control {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  border-left: 4px solid var(--green);
-  border-radius: 12px;
+  gap: 0.85rem;
+  border: 2px solid rgba(6, 75, 38, 0.22);
+  border-left: 6px solid var(--green);
+  border-radius: 16px;
   background: var(--green-soft);
   color: var(--green);
-  padding: 0.75rem 0.85rem;
+  padding: 0.9rem 1rem;
   font-weight: 900;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.advanced-rule-control:has(input:checked) {
+  border-color: var(--green);
+  background: linear-gradient(135deg, var(--green-soft), #d7eadf);
+  box-shadow: 0 0 0 4px rgba(6, 75, 38, 0.08);
+}
+
+.advanced-rule-control:has(input:not(:checked)) {
+  border-color: var(--border);
+  border-left-color: var(--muted);
+  background: #faf9f5;
+  color: var(--muted);
 }
 
 .advanced-rule-control input {
-  width: auto;
+  width: 24px;
+  height: 24px;
   margin: 0;
+  flex: 0 0 auto;
   accent-color: var(--green);
+  cursor: pointer;
+}
+
+.advanced-rule-control span::after {
+  content: "已开启";
+  display: inline-flex;
+  margin-left: 0.55rem;
+  border-radius: 999px;
+  padding: 0.14rem 0.5rem;
+  background: var(--green);
+  color: #fff;
+  font-size: 0.78rem;
+  vertical-align: middle;
+}
+
+.advanced-rule-control:has(input:not(:checked)) span::after {
+  content: "未开启";
+  background: #222;
 }
 
 .advanced-rule-control input:disabled {
   cursor: not-allowed;
+}
+
+.advanced-rule-control:has(input:disabled) {
+  cursor: not-allowed;
+}
+
+#advancedRulesImage {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+}
+
+@media (max-width: 760px) {
+  .advanced-rule-control {
+    padding: 0.85rem 0.9rem;
+  }
+
+  .advanced-rule-control input {
+    width: 26px;
+    height: 26px;
+  }
+
+  #advancedRulesImage {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
 }
